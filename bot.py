@@ -1803,6 +1803,29 @@ async def on_message(message):
         except:
             pass
 
+@bot.event
+async def on_voice_state_update(member, before, after):
+    """Event listener to auto-leave when the bot is left alone in a VC."""
+    
+    # 1. Find the voice client for this guild
+    voice_client = member.guild.voice_client
+    
+    # 2. If the bot isn't in a voice channel, we don't need to do anything
+    if not voice_client:
+        return
+
+    # 3. Check if the channel that was updated is the one the bot is in
+    # 'before.channel' is the channel the user just left
+    if before.channel is not None and before.channel.id == voice_client.channel.id:
+        
+        # 4. Count the members left. If only 1 (the bot itself), then leave.
+        # We filter out other bots just in case you have multiple bots in one VC
+        non_bot_members = [m for m in voice_client.channel.members if not m.bot]
+        
+        if len(non_bot_members) == 0:
+            logger.info(f"Bot left alone in VC {voice_client.channel.id}. Disconnecting...")
+            await voice_client.disconnect()
+
 # Run the bot
 if __name__ == "__main__":
     if DISCORD_TOKEN == 'your-discord-bot-token-here':
