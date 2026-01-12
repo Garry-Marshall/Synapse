@@ -14,6 +14,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import asyncio
 import re
+from ddgs import DDGS
 
 # Load environment variables from .env file
 load_dotenv()
@@ -75,7 +76,7 @@ log_filename = os.path.join(log_dir, f"bot_{datetime.now().strftime('%Y-%m-%d')}
 
 # Configure logging to both file and console
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
@@ -133,6 +134,13 @@ channel_stats: Dict[int, Dict] = defaultdict(lambda: {
     'response_times': []
 })
 
+# Initialise guild settings
+guild_settings: Dict[int, Dict] = {} 
+
+# Set web search cooldown timer
+search_cooldowns: Dict[int, float] = {}
+SEARCH_COOLDOWN = 10  # seconds
+
 # Store voice channel connections per guild
 voice_clients: Dict[int, discord.VoiceClient] = {}
 
@@ -184,6 +192,11 @@ def get_guild_temperature(guild_id: Optional[int]) -> float:
         return float(guild_settings[guild_id].get("temperature", 0.7))
     return 0.7
 
+#def get_effective_guild_config(guild_id: int) -> dict:
+#    cfg = DEFAULT_CONFIG.copy()
+#    cfg.update(get_guild_config(guild_id) or {})
+#    return cfg
+
 def is_guild_admin(interaction: discord.Interaction) -> bool:
     """Check if the user has admin permissions in the guild."""
     if not interaction.guild or not interaction.user:
@@ -203,7 +216,6 @@ def load_guild_settings():
     else:
         guild_settings = {}
 
-
 def save_guild_settings():
     try:
         with open(GUILD_SETTINGS_FILE, "w", encoding="utf-8") as f:
@@ -215,6 +227,104 @@ def save_guild_settings():
             )
     except Exception as e:
         logger.error(f"Failed to save guild settings: {e}")
+
+async def get_web_context(query: str, max_results: int = 5) -> str:
+    """Fetch search snippets from DuckDuckGo."""
+    try:
+        with DDGS() as ddgs:
+            results = [r for r in ddgs.text(query, max_results=max_results)]
+            if not results:
+                logger.warning(f"No search results for: {query}")
+                return ""
+            
+            context = "\n".join([f"Source: {r['href']}\nContent: {r['body']}" for r in results])
+            return f"\n--- WEB SEARCH RESULTS ---\n{context}\n--------------------------\n"
+    except Exception as e:
+        logger.error(f"Search error for '{query}': {e}", exc_info=True)
+        return ""
+
+def is_debug_enabled(guild_id: Optional[int]) -> bool:
+    if guild_id and guild_id in guild_settings:
+        return bool(guild_settings[guild_id].get("debug", False))
+    return False
+
+'''
+def guild_debug_log(
+    guild_id: Optional[int],
+    level: str,
+    message: str,
+    *args
+):
+    """
+    level: 'info' or 'debug'
+    Safe against logging format errors.
+    """
+    if not is_debug_enabled(guild_id):
+        return
+
+    guild_level = get_debug_level(guild_id)
+
+    if level == "debug" and guild_level != "debug":
+        return
+
+    # Safely format message ourselves
+    try:
+        message = str(message)
+        if args:
+            message = message % args
+    except Exception as e:
+        message = f"[LOG FORMAT ERROR] {message} | args={args} | error={e}"
+
+    message = f"[{level.upper()}] {message}"
+    logger.debug(message)
+'''
+
+
+def guild_debug_log(guild_id: Optional[int], level: str, message: str, *args):
+    """Log debug messages for guilds with debug enabled."""
+    if not is_debug_enabled(guild_id):
+        return
+
+    guild_level = get_debug_level(guild_id)
+    if level == "debug" and guild_level != "debug":
+        return
+
+    # Format the message with args if provided
+    try:
+        if args:
+            message = message % args
+    except Exception as e:
+        logger.error(f"Debug log formatting error: {e}")
+        message = f"{message} (format error with args: {args})"
+
+    # Log with guild prefix
+    log_message = f"[GUILD-{guild_id}] {message}"
+    
+    if level == "debug":
+        logger.debug(log_message)
+    else:
+        logger.info(log_message)
+
+
+def get_debug_level(guild_id: Optional[int]) -> str:
+    if guild_id and guild_id in guild_settings:
+        return guild_settings[guild_id].get("debug_level", "debug")
+    return "debug"
+
+def log_effective_logging_config():
+    root_logger = logging.getLogger()
+    handlers = root_logger.handlers
+
+    logger.info("Logging configuration:")
+    logger.info("  Root logger level: %s", logging.getLevelName(root_logger.level))
+
+    for i, handler in enumerate(handlers):
+        logger.info(
+            "  Handler %d: %s | level=%s",
+            i,
+            handler.__class__.__name__,
+            logging.getLevelName(handler.level)
+        )
 
 def estimate_tokens(text: str) -> int:
     """Rough estimation of tokens (approximately 4 characters per token)."""
@@ -237,8 +347,7 @@ def remove_thinking_tags(text: str) -> str:
 
 def is_inside_thinking_tags(text: str) -> bool:
     """Check if we're currently inside an unclosed thinking tag."""
-    import re
-    
+   
     if not HIDE_THINKING:
         return False
     
@@ -419,49 +528,104 @@ async def text_to_speech(text: str, voice: str = None) -> Optional[bytes]:
         return None
 
 async def query_lmstudio(conversation_id: int, message_text: str, channel, username: str, images: List[Dict] = None, guild_id: int = None) -> Optional[str]:
-    """Send a message to LMStudio API with conversation history and return the response."""
+    """Send a message to LMStudio API with conversation history and search results."""
     start_time = time.time()
     
+    # 1. Handle Web Search
+    SEARCH_TRIGGERS = [
+        "search for", "look up", "find information", 
+        "current news", "latest", "what's happening",
+        "who is currently", "weather in", "today's",
+        "who is the current", "recent", "breaking news"
+    ]
+    MIN_MESSAGE_LENGTH_FOR_SEARCH = 12  # Don't trigger on very short messages
+
+    web_context = ""
+    search_enabled = guild_settings.get(guild_id, {}).get("search_enabled", True)
+    should_search = (
+        search_enabled and
+        len(message_text) >= MIN_MESSAGE_LENGTH_FOR_SEARCH and
+        any(trigger in message_text.lower() for trigger in SEARCH_TRIGGERS)
+    )
+
+    if should_search:
+        # Check cooldown
+        if guild_id:
+            last_search = search_cooldowns.get(guild_id, 0)
+            time_since_search = time.time() - last_search
+            
+            if time_since_search < SEARCH_COOLDOWN:
+                remaining = int(SEARCH_COOLDOWN - time_since_search)
+                logger.info(f"🔍 Search cooldown active for guild {guild_id} ({remaining}s remaining)")
+                # Don't search, but inform the user
+                web_context = f"\n[Note: Search cooldown active. Wait {remaining} seconds.]\n"
+            else:
+                logger.info(f"🔍 Triggering web search for: '{message_text}'")
+                web_context = await get_web_context(message_text)
+                search_cooldowns[guild_id] = time.time()
+        else:
+            # No guild (DM), search without cooldown
+            logger.info(f"🔍 Triggering web search for: '{message_text}'")
+            web_context = await get_web_context(message_text)
+        
+        # RESTORED CONSOLE DEBUG INFO
+    if web_context:
+        guild_debug_log(
+            guild_id,
+            "debug",
+            "Web search context added | chars=%d | est_tokens=%d",
+            len(web_context),
+            estimate_tokens(web_context)
+        )
+    #else:
+    #    logger.debug("Web search triggered but returned no results")
+
+    # 2. Determine System Prompt (Merging search info with existing settings)
+    base_system_prompt = "You are a helpful assistant."
+    if guild_id and guild_id in guild_settings:
+        base_system_prompt = guild_settings[guild_id].get("system_prompt", base_system_prompt)
+
+    if web_context:
+        final_system_prompt = (
+            f"{base_system_prompt}\n\n"
+            f"CONTEXT FROM WEB SEARCH:\n{web_context}\n\n"
+            f"INSTRUCTION: Use the search results above to answer the user's request. "
+            f"If the information is not in the search results, rely on your general knowledge but prioritize the search data."
+        )
+    else:
+        final_system_prompt = base_system_prompt
+
+    # 3. Model and History Setup
     model_to_use = selected_models.get(guild_id, default_model) if guild_id else default_model
     
-    # Initial Context Loading
     if len(conversation_histories[conversation_id]) == 0 and not context_loaded[conversation_id] and CONTEXT_MESSAGES > 0:
         recent_context = await get_recent_context(channel, CONTEXT_MESSAGES)
         conversation_histories[conversation_id].extend(recent_context)
         context_loaded[conversation_id] = True
+        logger.info(f"Loaded {len(recent_context)} context messages")
 
-    # Prepare current message
     current_content = message_text
     if images and len(images) > 0:
         current_content = [{"type": "text", "text": message_text or "What's in this image?"}] + images
 
     conversation_histories[conversation_id].append({"role": "user", "content": current_content})
     
-    # ------------------------------------------------------------------
-    # ✅ IMPROVED: MESSAGE MERGING & SYSTEM PROMPT INJECTION
-    # ------------------------------------------------------------------
+    # 4. Build the final API Message List
     api_messages = []
-    
-    # Add System Prompt first
-    if guild_id and guild_id in guild_settings:
-        sys_prompt = guild_settings[guild_id].get("system_prompt")
-        if sys_prompt:
-            api_messages.append({"role": "system", "content": sys_prompt})
+    api_messages.append({"role": "system", "content": final_system_prompt})
 
-    # Merge history to prevent consecutive same-role messages
     for msg in conversation_histories[conversation_id]:
         if api_messages and api_messages[-1]["role"] == msg["role"]:
-            # If both are strings, merge them. If complex (images), keep separate or handle as needed
             if isinstance(api_messages[-1]["content"], str) and isinstance(msg["content"], str):
                 api_messages[-1]["content"] += f"\n\n{msg['content']}"
             else:
-                api_messages.append(msg) # Fallback for complex types
+                api_messages.append(msg.copy())
         else:
             api_messages.append(msg.copy())
 
-    # Limit history size
+    # Limit history
     if len(api_messages) > MAX_HISTORY * 2:
-        api_messages = api_messages[-(MAX_HISTORY * 2):]
+        api_messages = [api_messages[0]] + api_messages[-(MAX_HISTORY * 2 - 1):]
     
     payload = {
         "model": model_to_use,
@@ -470,7 +634,22 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
         "max_tokens": get_guild_max_tokens(guild_id),
         "stream": True
     }
+
+    # ---- REQUEST LOGGING (summary, not content) ----
+    estimated_prompt_tokens = estimate_tokens(str(api_messages))
+
+    logger.info(
+        "LMStudio request | convo=%s | model=%s | messages=%d | est_prompt_tokens=%d | temp=%.2f | max_tokens=%s",
+        conversation_id,
+        model_to_use,
+        len(api_messages),
+        estimated_prompt_tokens,
+        payload["temperature"],
+        payload["max_tokens"]
+    )
+    # ----------------------------------------------
     
+    # 5. API Request
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(LMSTUDIO_URL, json=payload) as response:
@@ -489,15 +668,43 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
                                     yield content
                             except: continue
                     
-                    # Store final response in history
+                    # Log the FULL response (including <think> tags) before cleanup
+                    guild_debug_log(
+                        guild_id,
+                        "debug",
+                        "Full raw response (with thinking) | convo=%s:\n%s",
+                        conversation_id,
+                        assistant_message
+                    )
+                    
+                    # Store in conversation history
                     conversation_histories[conversation_id].append({"role": "assistant", "content": assistant_message})
                     
                     # Stats tracking
                     response_time = time.time() - start_time
+                    # ---- RAW RESPONSE TOKEN STATS ----
+                    raw_token_count = estimate_tokens(assistant_message)
+                    # ---------------------------------
+                    # ---- TOKEN STATS ----
+                    raw_token_count = estimate_tokens(assistant_message)
+
+                    assistant_message_filtered = remove_thinking_tags(assistant_message)
+                    cleaned_token_count = estimate_tokens(assistant_message_filtered)
+
+                    logger.info(
+                        "Response tokens | convo=%s | raw=%d | cleaned=%d | removed=%d | time=%.2fs",
+                        conversation_id,
+                        raw_token_count,
+                        cleaned_token_count,
+                        raw_token_count - cleaned_token_count,
+                        response_time
+                    )
+                    # ---------------------
                     stats = channel_stats[conversation_id]
                     stats['total_messages'] += 2
                     stats['response_times'].append(response_time)
                 else:
+                    logger.error(f"LMStudio Error {response.status}: {await response.text()}")
                     yield f"Error: LMStudio API returned status {response.status}"
     except Exception as e:
         logger.error(f"Request error: {e}")
@@ -781,11 +988,52 @@ async def select_model(interaction: discord.Interaction):
         ephemeral=True
     )
 
+CONFIG_CATEGORIES = {
+    "system": ["show", "set", "clear"],
+    "temperature": ["show", "set", "reset"],
+    "max_tokens": ["show", "set", "reset"],
+    "debug": ["show", "on", "off", "level"],
+    "clear": ["last"],
+    "show": ["show"],
+}
+
+from discord import app_commands
+
+async def autocomplete_config_category(
+    interaction: discord.Interaction,
+    current: str
+):
+    return [
+        app_commands.Choice(name=cat, value=cat)
+        for cat in CONFIG_CATEGORIES.keys()
+        if cat.startswith(current.lower())
+    ]
+
+async def autocomplete_config_action(
+    interaction: discord.Interaction,
+    current: str
+):
+    category = interaction.namespace.category
+    if not category:
+        return []
+
+    actions = CONFIG_CATEGORIES.get(category.lower(), [])
+
+    return [
+        app_commands.Choice(name=action, value=action)
+        for action in actions
+        if action.startswith(current.lower())
+    ]
+
 @bot.tree.command(name="config", description="Configure bot settings for this server")
+@app_commands.autocomplete(
+    category=autocomplete_config_category,
+    action=autocomplete_config_action,
+)
 async def config(
     interaction: discord.Interaction,
     category: str,
-    action: str,
+    action: Optional[str] = None,
     value: Optional[str] = None
 ):
     if not interaction.guild:
@@ -796,6 +1044,66 @@ async def config(
         return
 
     guild_id = interaction.guild.id
+
+    # ---------------- SEARCH CONFIG ----------------
+    if category.lower() == "search":
+        if action.lower() == "show":
+            enabled = guild_settings.get(guild_id, {}).get("search_enabled", True)
+            await interaction.response.send_message(
+                f"🔍 Web search is **{'ENABLED' if enabled else 'DISABLED'}**",
+                ephemeral=True
+            )
+            return
+        
+        if not is_guild_admin(interaction):
+            await interaction.response.send_message(
+                "❌ Only admins can change search settings.",
+                ephemeral=True
+            )
+            return
+        
+        if action.lower() in {"on", "off"}:
+            enabled = action.lower() == "on"
+            guild_settings.setdefault(guild_id, {})["search_enabled"] = enabled
+            save_guild_settings()
+            await interaction.response.send_message(
+                f"✅ Web search turned **{'ON' if enabled else 'OFF'}**.",
+                ephemeral=True
+            )
+            return
+
+    # ---------------- SHOW ALL CONFIG ----------------
+    if category.lower() == "show" and (action is None or action.lower() == "show"):
+        cfg = guild_settings.get(guild_id, {})
+
+        system_prompt = cfg.get("system_prompt")
+        temperature = cfg.get("temperature", 0.7)
+        max_tokens = cfg.get("max_tokens", -1)
+        debug_enabled = cfg.get("debug", False)
+        debug_level = cfg.get("debug_level", "info")
+
+        prompt_display = (
+            "Default"
+            if not system_prompt
+            else f"Custom ({len(system_prompt)} chars)"
+        )
+
+        max_tokens_display = (
+            "unlimited" if max_tokens == -1 else str(max_tokens)
+        )
+
+        message = (
+            "🛠 **Server configuration**\n"
+            f"🧠 System prompt: **{prompt_display}**\n"
+            f"🌡️ Temperature: **{temperature}**\n"
+            f"📏 Max tokens: **{max_tokens_display}**\n"
+            f"🐞 Debug: **{'ON' if debug_enabled else 'OFF'}** "
+            f"(level: **{debug_level.upper()}**)"
+        )
+
+        await interaction.response.send_message(message, ephemeral=True)
+        return
+
 
     # ---------------- SYSTEM PROMPT ----------------
     if category.lower() == "system":
@@ -968,6 +1276,71 @@ async def config(
         logger.info(f"Cleared last interaction in channel {interaction.channel_id}")
         return
 
+    # ---------------- DEBUG LOGGING ----------------
+    if category.lower() == "debug":
+
+        # SHOW
+        if action.lower() == "show":
+            enabled = is_debug_enabled(guild_id)
+            level = get_debug_level(guild_id)
+            await interaction.response.send_message(
+                f"🐞 Debug logging is **{'ON' if enabled else 'OFF'}** "
+                f"(level: **{level.upper()}**).",
+                ephemeral=True
+            )
+            return
+
+        if not is_guild_admin(interaction):
+            await interaction.response.send_message(
+                "❌ Only admins can change debug logging.",
+                ephemeral=True
+            )
+            return
+
+        # ON / OFF
+        if action.lower() in {"on", "off"}:
+            enabled = action.lower() == "on"
+            guild_settings.setdefault(guild_id, {})["debug"] = enabled
+            save_guild_settings()
+
+            await interaction.response.send_message(
+                f"✅ Debug logging turned **{'ON' if enabled else 'OFF'}**.",
+                ephemeral=True
+            )
+
+            logger.info(
+                "Debug logging %s for guild %s (%s)",
+                "enabled" if enabled else "disabled",
+                interaction.guild.name,
+                guild_id
+            )
+            return
+
+        # LEVEL
+        if action.lower() == "level":
+            if value not in {"info", "debug"}:
+                await interaction.response.send_message(
+                    "❌ Usage: `/config debug level info` or `/config debug level debug`",
+                    ephemeral=True
+                )
+                return
+
+            guild_settings.setdefault(guild_id, {})["debug_level"] = value
+            save_guild_settings()
+
+            await interaction.response.send_message(
+                f"✅ Debug log level set to **{value.upper()}**.",
+                ephemeral=True
+            )
+
+            logger.info(
+                "Debug log level set to %s for guild %s (%s)",
+                value,
+                interaction.guild.name,
+                guild_id
+            )
+            return
+
     # ---------------- FALLBACK ----------------
     await interaction.response.send_message(
         "❌ Invalid config command.\n\n"
@@ -982,64 +1355,72 @@ async def config(
 @bot.tree.command(name="help", description="Show all available bot commands")
 async def help_command(interaction: discord.Interaction):
     help_text = """
-🤖 **Jarvis – Help**
+    🤖 **Jarvis – Help**
 
----
-### 💬 Core Commands
-• Just type a message in a monitored channel or DM to chat with the AI  
-• Attach images or text files to include them in the prompt  
-• Prefix a message with `*` to prevent the bot from responding
+    ---
+    ### 💬 Core Usage
+    • Just type a message in a monitored channel or DM to chat with the AI  
+    • Attach images or text files to include them in the prompt  
+    • Prefix a message with `*` to prevent the bot from responding  
 
----
-### ⚙️ Configuration (`/config`)
-*(Some options require admin permissions)*
+    ---
+    ### ⚙️ Configuration (`/config`)
+    *(Some options require admin permissions)*
 
-**System prompt**
-• `/config system show`  
-• `/config system set <prompt>` *(admin)*  
-• `/config system clear` *(admin)*  
+    **Show configuration**
+    • `/config show show` – Show all current server settings  
 
-**Temperature**
-• `/config temperature show`  
-• `/config temperature set <0.0–2.0>` *(admin)*  
-• `/config temperature reset` *(admin)*  
+    **System prompt**
+    • `/config system show`  
+    • `/config system set <prompt>` *(admin)*  
+    • `/config system clear` *(admin)*  
 
-**Max tokens**
-• `/config max_tokens show`  
-• `/config max_tokens set <number | -1>` *(admin)*  
-• `/config max_tokens reset` *(admin)*  
+    **Temperature**
+    • `/config temperature show`  
+    • `/config temperature set <0.0–2.0>` *(admin)*  
+    • `/config temperature reset` *(admin)*  
 
-**Conversation tools**
-• `/config clear last` – Remove the last user/assistant exchange
+    **Max tokens**
+    • `/config max_tokens show`  
+    • `/config max_tokens set <number | -1>` *(admin)*  
+    • `/config max_tokens reset` *(admin)*  
 
----
-### 🧠 Model Management
-• `/model` – Select the active AI model for this server
+    **Debug logging**
+    • `/config debug show`  
+    • `/config debug on|off` *(admin)*  
+    • `/config debug level info|debug` *(admin)*  
 
----
-### 🔊 Voice / TTS
-• `/join` – Join your current voice channel  
-• `/leave` – Leave the voice channel  
-• `/voice` – Select the TTS voice  
+    **Conversation tools**
+    • `/config clear last` – Remove the last user/assistant exchange  
 
----
-### 📊 Utilities
-• `/reset` – Reset conversation history  
-• `/history` – Show conversation history size  
-• `/stats` – Show conversation statistics  
+    ---
+    ### 🧠 Model Management
+    • `/model` – Select the active AI model for this server  
 
----
-### ℹ️ Notes
-• Settings are saved per server and persist across restarts  
-• System prompts affect **all users** in the server  
-• Temperature and max_tokens affect response style and length  
+    ---
+    ### 🔊 Voice / TTS
+    • `/join` – Join your current voice channel  
+    • `/leave` – Leave the voice channel  
+    • `/voice` – Select the TTS voice  
 
----
-"""
+    ---
+    ### ℹ️ Notes
+    • Settings are saved per server and persist across restarts  
+    • Admin-only options are marked *(admin)*  
+    • Autocomplete is available for `/config` categories and actions  
+    • Temperature and max_tokens affect response style and length  
+
+    ---
+    """
     await interaction.response.send_message(help_text, ephemeral=True)
 
 @bot.event
 async def on_ready():
+    log_effective_logging_config()
+    logger.info(
+        "Logger initialized | python_level=%s",
+        logging.getLevelName(logger.getEffectiveLevel())
+    )
     load_guild_settings()
     logger.info(f"Loaded settings for {len(guild_settings)} guild(s)")
 
@@ -1210,7 +1591,9 @@ async def on_message(message):
                                 
                                 def cleanup(error):
                                     if os.path.exists(temp_audio):
-                                        try: os.remove(temp_audio)
+                                        try:
+                                            time.sleep(0.1)
+                                            os.remove(temp_audio)
                                         except: pass
 
                                 voice_client.play(discord.FFmpegPCMAudio(temp_audio), after=cleanup)
