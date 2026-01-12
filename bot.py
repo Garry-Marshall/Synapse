@@ -17,6 +17,7 @@ import re
 from ddgs import DDGS
 import trafilatura
 from trafilatura.settings import use_config
+from pypdf import PdfReader
 
 # Load environment variables from .env file
 load_dotenv()
@@ -52,6 +53,10 @@ MAX_IMAGE_SIZE=5
 # Text File Support
 ALLOW_TEXT_FILES=true
 MAX_TEXT_FILE_SIZE=2
+
+# PDF Support
+ALLOW_PDF=true
+MAX_PDF_SIZE=10
 
 # Reasoning Model Settings
 HIDE_THINKING=true
@@ -173,6 +178,8 @@ ALLOW_IMAGES = os.getenv('ALLOW_IMAGES', 'true').lower() == 'true'
 MAX_IMAGE_SIZE = int(os.getenv('MAX_IMAGE_SIZE', '5'))
 ALLOW_TEXT_FILES = os.getenv('ALLOW_TEXT_FILES', 'true').lower() == 'true'
 MAX_TEXT_FILE_SIZE = int(os.getenv('MAX_TEXT_FILE_SIZE', '2'))
+ALLOW_PDF = os.getenv("ALLOW_PDF", "true").lower() == "true"
+MAX_PDF_SIZE = int(os.getenv("MAX_PDF_SIZE", "10"))
 HIDE_THINKING = os.getenv('HIDE_THINKING', 'true').lower() == 'true'
 ENABLE_TTS = os.getenv('ENABLE_TTS', 'true').lower() == 'true'
 ALLTALK_URL = os.getenv('ALLTALK_URL', 'http://127.0.0.1:7851')
@@ -505,6 +512,46 @@ async def process_text_attachment(attachment, channel) -> Optional[str]:
         await channel.send(f"❌ Failed to process text file **{attachment.filename}**: {str(e)}")
         return None
 
+async def process_pdf_attachment(attachment, channel) -> Optional[str]:
+    """Download and extract text from a PDF with character truncation."""
+    if not ALLOW_PDF:
+        return None
+
+    # ... existing extension and size checks ...
+
+    try:
+        file_data = await attachment.read()
+        pdf_stream = io.BytesIO(file_data)
+        reader = PdfReader(pdf_stream)
+        
+        extracted_text = []
+        current_length = 0
+        # Set a safe limit (e.g., 40,000 chars)
+        max_pdf_chars = 40000 
+        
+        for i, page in enumerate(reader.pages):
+            page_text = page.extract_text()
+            if page_text:
+                # Check if adding this page exceeds our limit
+                if current_length + len(page_text) > max_pdf_chars:
+                    remaining_space = max_pdf_chars - current_length
+                    extracted_text.append(f"--- Page {i+1} (TRUNCATED) ---\n{page_text[:remaining_space]}")
+                    logger.info(f"✂️ PDF {attachment.filename} truncated at page {i+1}")
+                    break
+                
+                extracted_text.append(f"--- Page {i+1} ---\n{page_text}")
+                current_length += len(page_text)
+        
+        if not extracted_text:
+            return f"\n[Note: PDF {attachment.filename} had no extractable text.]\n"
+
+        full_content = "\n".join(extracted_text)
+        return f"\n\n--- Content of PDF: {attachment.filename} ---\n{full_content}\n--- End of PDF ---\n"
+        
+    except Exception as e:
+        logger.error(f"Error processing PDF {attachment.filename}: {e}")
+        return None
+
 async def fetch_available_models() -> List[str]:
     """Fetch available (loaded) models from LM Studio."""
     try:
@@ -604,12 +651,22 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
     ]
     MIN_MESSAGE_LENGTH_FOR_SEARCH = 12  # Don't trigger on very short messages
 
+    #  Add Negative Triggers to detect when the user is talking about a local file
+    NEGATIVE_TRIGGERS = ["this document", "this file", "this pdf", "attached", "the content", "summarize this", "a document"]
+
     web_context = ""
     search_enabled = guild_settings.get(guild_id, {}).get("search_enabled", True)
+    
+    # Check for triggers but skip if it's about a local document
+    has_search_trigger = any(trigger in message_text.lower() for trigger in SEARCH_TRIGGERS)
+    is_referencing_file = any(neg in message_text.lower() for neg in NEGATIVE_TRIGGERS)
+    
+    # Only search if triggered AND NOT talking about an attachment
     should_search = (
         search_enabled and
         len(message_text) >= MIN_MESSAGE_LENGTH_FOR_SEARCH and
-        any(trigger in message_text.lower() for trigger in SEARCH_TRIGGERS)
+        has_search_trigger and
+        not is_referencing_file  # Skip search if user says "summarize this document"
     )
 
     if should_search:
@@ -702,6 +759,10 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
             "\n\nINSTRUCTION: Prioritize using the provided context (Search Results or URL content) "
             "to answer. If the answer is found in the context, cite the source if possible."
         )
+        # Ensure the total system prompt doesn't exceed 60k chars
+        if len(final_system_prompt) > 60000:
+            logger.warning(f"⚠️ Total system context too large ({len(final_system_prompt)}). Truncating to 60k.")
+            final_system_prompt = final_system_prompt[:60000] + "\n[System: Context truncated due to length limits]"
         
 
     # 3. Model and History Setup
@@ -1705,6 +1766,10 @@ async def on_message(message):
                     # Image was rejected - abort entire message processing
                     logger.info(f"Aborting message processing due to rejected image: {attachment.filename}")
                     return
+            elif ALLOW_PDF and (attachment.filename.lower().endswith('.pdf') or attachment.content_type == 'application/pdf'):
+                pdf_content = await process_pdf_attachment(attachment, message.channel)
+                if pdf_content:
+                    text_files_content += pdf_content
             elif ALLOW_TEXT_FILES:
                 text_content = await process_text_attachment(attachment, message.channel)
                 if text_content:
