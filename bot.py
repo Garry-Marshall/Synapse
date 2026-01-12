@@ -900,7 +900,14 @@ async def show_stats(interaction: discord.Interaction):
 # If this channel is brand new and not in our stats yet, initialize it
     if conversation_id not in channel_stats:
         channel_stats[conversation_id] = create_empty_stats()
-    
+ 
+        try:
+            with open(STATS_FILE, "w", encoding="utf-8") as f:
+                json.dump(serialize_stats(channel_stats), f, indent=2)
+                logger.info(f"Initialized and saved new stats for channel {conversation_id}")
+        except Exception as e:
+            logger.error(f"Failed to save stats after initialization: {e}")
+
     stats = channel_stats[conversation_id]
     
     if interaction.guild and interaction.channel_id not in CHANNEL_IDS:
