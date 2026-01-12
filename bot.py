@@ -94,12 +94,72 @@ logger = logging.getLogger(__name__)
 #define stats file
 STATS_FILE = "channel_stats.json"
 
-#load stats file if exists
+def serialize_stats(stats: dict) -> dict:
+    out = {}
+    for cid, data in stats.items():
+        out[str(cid)] = {
+            **data,
+            "start_time": data["start_time"].isoformat(),
+            "last_message_time": (
+                data["last_message_time"].isoformat()
+                if data["last_message_time"] else None
+            ),
+        }
+    return out
+
+def deserialize_stats(data: dict) -> dict:
+    out = {}
+    for cid, stats in data.items():
+        out[int(cid)] = {
+            **stats,
+            "start_time": datetime.fromisoformat(stats["start_time"]),
+            "last_message_time": (
+                datetime.fromisoformat(stats["last_message_time"])
+                if stats["last_message_time"] else None
+            ),
+        }
+    return out
+
+# --- Stats Loading Logic ---
 channel_stats = {}
 
+def create_empty_stats():
+    """Returns a dictionary with the default structure for a new channel's stats."""
+    return {
+        "start_time": datetime.now(),
+        "total_messages": 0,
+        "prompt_tokens_estimate": 0,
+        "response_tokens_raw": 0,
+        "response_tokens_cleaned": 0,
+        "response_times": [],
+        "last_message_time": None,
+        "failed_requests": 0,
+    }
+
 if os.path.exists(STATS_FILE):
-    with open(STATS_FILE, "r", encoding="utf-8") as f:
-        channel_stats = deserialize_stats(json.load(f))
+    try:
+        with open(STATS_FILE, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+            if isinstance(raw, dict) and raw:
+                channel_stats = deserialize_stats(raw)
+                logger.info(f"Successfully loaded stats for {len(channel_stats)} channels.")
+            else:
+                # File exists but is just [] or "" or similar
+                channel_stats = {}
+    except Exception as e:
+        logger.warning(f"Stats file was invalid ({e}). Resetting memory.")
+        channel_stats = {}
+else:
+    logger.info("Stats file not found. A new one will be created.")
+    channel_stats = {}
+
+# Ensure a valid file exists on disk right now
+# This prevents the "empty file/invalid json" error on the first /stats call
+try:
+    with open(STATS_FILE, "w", encoding="utf-8") as f:
+        json.dump(serialize_stats(channel_stats), f, indent=2)
+except Exception as e:
+    logger.error(f"Could not write initial stats file: {e}")
 
 
 # Configuration
@@ -174,32 +234,6 @@ intents.message_content = True
 intents.voice_states = True  # Need this for voice channels
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-def serialize_stats(stats: dict) -> dict:
-    out = {}
-    for cid, data in stats.items():
-        out[str(cid)] = {
-            **data,
-            "start_time": data["start_time"].isoformat(),
-            "last_message_time": (
-                data["last_message_time"].isoformat()
-                if data["last_message_time"] else None
-            ),
-        }
-    return out
-
-
-def deserialize_stats(data: dict) -> dict:
-    out = {}
-    for cid, stats in data.items():
-        out[int(cid)] = {
-            **stats,
-            "start_time": datetime.fromisoformat(stats["start_time"]),
-            "last_message_time": (
-                datetime.fromisoformat(stats["last_message_time"])
-                if stats["last_message_time"] else None
-            ),
-        }
-    return out
 
 async def fetch_url_content(url: str) -> str:
     """Fetch and clean the main text content from a specific URL."""
@@ -736,6 +770,8 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
 
             "response_times": [],
             "last_message_time": None,
+            
+            "failed_requests": 0,
         }
     )
     try:
@@ -806,9 +842,11 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
                     # ------------------------------------------------
                 else:
                     logger.error(f"LMStudio Error {response.status}: {await response.text()}")
+                    stats["failed_requests"] += 1
                     yield f"Error: LMStudio API returned status {response.status}"
     except Exception as e:
         logger.error(f"Request error: {e}")
+        stats["failed_requests"] += 1
         yield "Error: Connection to LMStudio failed."
 
 @bot.tree.command(name='reset', description='Reset the conversation history for this channel or DM')
@@ -858,6 +896,12 @@ async def show_history(interaction: discord.Interaction):
 async def show_stats(interaction: discord.Interaction):
     """Slash command to show conversation statistics."""
     conversation_id = interaction.channel_id if interaction.guild else interaction.user.id
+
+# If this channel is brand new and not in our stats yet, initialize it
+    if conversation_id not in channel_stats:
+        channel_stats[conversation_id] = create_empty_stats()
+    
+    stats = channel_stats[conversation_id]
     
     if interaction.guild and interaction.channel_id not in CHANNEL_IDS:
         await interaction.response.send_message("❌ This command only works in monitored channels.", ephemeral=True)
@@ -888,6 +932,8 @@ async def show_stats(interaction: discord.Interaction):
 **Response Tokens (raw):** {stats['response_tokens_raw']:,}
 **Response Tokens (cleaned):** {stats['response_tokens_cleaned']:,}
 **Total Tokens (est):** {(stats['prompt_tokens_estimate'] + stats['response_tokens_cleaned']):,}
+**Failed Requests:** {stats.get('failed_requests', 0)}
+
 **Session Duration:** {hours}h {minutes}m {seconds}s
 **Average Response Time:** {avg_response_time:.2f}s
 **Last Message:** {last_msg}
@@ -907,20 +953,26 @@ async def reset_stats(interaction: discord.Interaction):
         )
         return
 
-    if conversation_id not in channel_stats:
-        await interaction.response.send_message(
-            "ℹ️ No stats to reset.",
-            ephemeral=True
-        )
-        return
+    # Reinitialize stats instead of deleting them
+    channel_stats[conversation_id] = {
+        "start_time": datetime.now(),
+        "total_messages": 0,
 
-    channel_stats.pop(conversation_id, None)
+        "prompt_tokens_estimate": 0,
+        "response_tokens_raw": 0,
+        "response_tokens_cleaned": 0,
+
+        "response_times": [],
+        "last_message_time": None,
+
+        "failed_requests": 0,
+    }
 
     with open(STATS_FILE, "w", encoding="utf-8") as f:
         json.dump(serialize_stats(channel_stats), f, indent=2)
 
     await interaction.response.send_message(
-        "🧹 Conversation statistics reset.",
+        "📊 Conversation statistics have been reset.",
         ephemeral=True
     )
 
