@@ -102,6 +102,7 @@ HIDE_THINKING = os.getenv('HIDE_THINKING', 'true').lower() == 'true'
 ENABLE_TTS = os.getenv('ENABLE_TTS', 'true').lower() == 'true'
 ALLTALK_URL = os.getenv('ALLTALK_URL', 'http://127.0.0.1:7851')
 ALLTALK_VOICE = os.getenv('ALLTALK_VOICE', 'alloy')
+GUILD_SETTINGS_FILE = "guild_settings.json"
 
 # OpenAI-compatible voice names for AllTalk TTS
 AVAILABLE_VOICES = ['alloy', 'echo', 'fable', 'nova', 'onyx', 'shimmer']
@@ -137,6 +138,11 @@ voice_clients: Dict[int, discord.VoiceClient] = {}
 # Store selected voice per guild
 selected_voices: Dict[int, str] = defaultdict(lambda: ALLTALK_VOICE)
 
+# Store available models and selected model per guild
+available_models: List[str] = []
+default_model: str = "local-model"
+selected_models: Dict[int, str] = {}
+
 # Bot setup with message content intent
 intents = discord.Intents.default()
 intents.message_content = True
@@ -166,6 +172,48 @@ async def get_recent_context(channel, limit: int = CONTEXT_MESSAGES) -> List[Dic
     except Exception as e:
         logger.error(f"Error fetching message history: {e}")
         return []
+
+def get_guild_max_tokens(guild_id: Optional[int]) -> int:
+    if guild_id and guild_id in guild_settings:
+        return int(guild_settings[guild_id].get("max_tokens", -1))
+    return -1
+
+def get_guild_temperature(guild_id: Optional[int]) -> float:
+    if guild_id and guild_id in guild_settings:
+        return float(guild_settings[guild_id].get("temperature", 0.7))
+    return 0.7
+
+def is_guild_admin(interaction: discord.Interaction) -> bool:
+    """Check if the user has admin permissions in the guild."""
+    if not interaction.guild or not interaction.user:
+        return False
+    return interaction.user.guild_permissions.administrator
+
+def load_guild_settings():
+    global guild_settings
+    if os.path.exists(GUILD_SETTINGS_FILE):
+        try:
+            with open(GUILD_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+                guild_settings = {int(k): v for k, v in raw.items()}
+        except Exception as e:
+            logger.error(f"Failed to load guild settings: {e}")
+            guild_settings = {}
+    else:
+        guild_settings = {}
+
+
+def save_guild_settings():
+    try:
+        with open(GUILD_SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(
+                {str(k): v for k, v in guild_settings.items()},
+                f,
+                indent=2,
+                ensure_ascii=False
+            )
+    except Exception as e:
+        logger.error(f"Failed to save guild settings: {e}")
 
 def estimate_tokens(text: str) -> int:
     """Rough estimation of tokens (approximately 4 characters per token)."""
@@ -281,6 +329,49 @@ async def process_text_attachment(attachment) -> Optional[str]:
         logger.error(f"Error processing text file {attachment.filename}: {e}")
         return None
 
+async def fetch_available_models() -> List[str]:
+    """Fetch available (loaded) models from LM Studio."""
+    try:
+        base_url = (
+            LMSTUDIO_URL.split('/v1/')[0]
+            if '/v1/' in LMSTUDIO_URL
+            else LMSTUDIO_URL.rsplit('/', 1)[0]
+        )
+
+        models_url = f"{base_url}/api/v1/models"
+        logger.info(f"Fetching models from: {models_url}")
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(models_url) as response:
+                if response.status != 200:
+                    logger.error(
+                        f"Failed to fetch models: {response.status} - {await response.text()}"
+                    )
+                    return []
+
+                data = await response.json()
+
+                all_models = data.get("models", [])
+
+                # Only return models that are actually loaded
+                models = [
+                    model["key"]
+                    for model in all_models
+                    if model.get("loaded_instances")
+                ]
+
+                if models:
+                    logger.info(f"Loaded LM Studio model(s): {models}")
+                else:
+                    logger.warning("No loaded models found in LM Studio")
+
+                return models
+
+    except Exception:
+        logger.error("Error fetching models from LM Studio", exc_info=True)
+        return []
+
+
 async def text_to_speech(text: str, voice: str = None) -> Optional[bytes]:
     """Convert text to speech using AllTalk TTS (OpenAI compatible endpoint)."""
     if not voice or voice not in AVAILABLE_VOICES:
@@ -324,9 +415,16 @@ async def text_to_speech(text: str, voice: str = None) -> Optional[bytes]:
         logger.error(f"Error generating TTS: {e}")
         return None
 
-async def query_lmstudio(conversation_id: int, message_text: str, channel, username: str, images: List[Dict] = None) -> Optional[str]:
+async def query_lmstudio(conversation_id: int, message_text: str, channel, username: str, images: List[Dict] = None, guild_id: int = None) -> Optional[str]:
     """Send a message to LMStudio API with conversation history and return the response."""
     start_time = time.time()
+    
+    # Get the selected model for this guild
+    model_to_use = default_model
+    if guild_id and guild_id in selected_models:
+        model_to_use = selected_models[guild_id]
+    elif available_models:
+        model_to_use = available_models[0]
     
     if len(conversation_histories[conversation_id]) == 0 and not context_loaded[conversation_id] and CONTEXT_MESSAGES > 0:
         recent_context = await get_recent_context(channel, CONTEXT_MESSAGES)
@@ -365,11 +463,24 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
     image_info = f" [with {len(images)} image(s)]" if images and len(images) > 0 else ""
     logger.info(f"[{context_type}]{image_info}")
     logger.info(f"Message: {message_text}")
+    logger.info(f"Using model: {model_to_use}")
     
     if len(conversation_histories[conversation_id]) > MAX_HISTORY * 2:
         conversation_histories[conversation_id] = conversation_histories[conversation_id][-(MAX_HISTORY * 2):]
     
     api_messages = []
+
+    # ------------------------------------------------------------------
+    # ✅ INSERT SYSTEM PROMPT (per guild, persisted)
+    # ------------------------------------------------------------------
+    if guild_id and guild_id in guild_settings:
+        system_prompt = guild_settings[guild_id].get("system_prompt")
+        if system_prompt:
+            api_messages.append({
+                "role": "system",
+                "content": system_prompt
+            })
+    # ------------------------------------------------------------------
     
     for msg in conversation_histories[conversation_id]:
         current_role = msg["role"]
@@ -394,10 +505,10 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
         logger.debug(f"  {i+1}. {msg['role']}: {content_preview}")
     
     payload = {
-        "model": "local-model",
+        "model": model_to_use,
         "messages": api_messages,
-        "temperature": 0.7,
-        "max_tokens": -1,
+        "temperature": get_guild_temperature(guild_id),
+        "max_tokens": get_guild_max_tokens(guild_id),
         "stream": True
     }
     
@@ -662,13 +773,359 @@ async def select_voice(interaction: discord.Interaction):
         ephemeral=True
     )
 
+class ModelSelectView(discord.ui.View):
+    """View with dropdown for model selection."""
+    def __init__(self, current_model: str):
+        super().__init__(timeout=60)
+        self.add_item(ModelSelectDropdown(current_model))
+
+class ModelSelectDropdown(discord.ui.Select):
+    """Dropdown menu for selecting AI model."""
+    def __init__(self, current_model: str):
+        if not available_models:
+            options = [discord.SelectOption(label="No models available", value="none")]
+        else:
+            options = [
+                discord.SelectOption(
+                    label=model,
+                    value=model,
+                    default=(model == current_model)
+                )
+                for model in available_models[:25]  # Discord limit
+            ]
+        
+        super().__init__(
+            placeholder="Select a model...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        if self.values[0] == "none":
+            await interaction.response.send_message("❌ No models available.", ephemeral=True)
+            return
+        
+        selected_model = self.values[0]
+        guild_id = interaction.guild.id
+        selected_models[guild_id] = selected_model
+        
+        await interaction.response.send_message(
+            f"✅ Model changed to: **{selected_model}**",
+            ephemeral=True
+        )
+        logger.info(f"Model changed to '{selected_model}' in {interaction.guild.name}")
+
+@bot.tree.command(name='model', description='Select AI model')
+async def select_model(interaction: discord.Interaction):
+    """Show dropdown to select AI model."""
+    await interaction.response.defer(ephemeral=True)
+    
+    # Refresh available models
+    global available_models, default_model
+    models = await fetch_available_models()
+    
+    if models:
+        available_models = models
+        if not default_model or default_model == "local-model":
+            default_model = models[0]
+    
+    if not available_models:
+        await interaction.followup.send(
+            "❌ No models found in LMStudio. Please load a model first.",
+            ephemeral=True
+        )
+        return
+    
+    guild_id = interaction.guild.id
+    current_model = selected_models.get(guild_id, default_model)
+    
+    view = ModelSelectView(current_model)
+    await interaction.followup.send(
+        f"**Current model:** {current_model}\n\n**Available models:**\n" + 
+        "\n".join(f"• {model}" for model in available_models) + 
+        "\n\nSelect a new model:",
+        view=view,
+        ephemeral=True
+    )
+
+@bot.tree.command(name="config", description="Configure bot settings for this server")
+async def config(
+    interaction: discord.Interaction,
+    category: str,
+    action: str,
+    value: Optional[str] = None
+):
+    if not interaction.guild:
+        await interaction.response.send_message(
+            "❌ Configuration is only available in servers.",
+            ephemeral=True
+        )
+        return
+
+    guild_id = interaction.guild.id
+
+    # ---------------- SYSTEM PROMPT ----------------
+    if category.lower() == "system":
+        if action.lower() == "show":
+            current = guild_settings.get(guild_id, {}).get("system_prompt")
+            if current:
+                await interaction.response.send_message(
+                    f"🧠 **System prompt:**\n```{current}```",
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    "ℹ️ No system prompt set.",
+                    ephemeral=True
+                )
+            return
+
+        if not is_guild_admin(interaction):
+            await interaction.response.send_message(
+                "❌ Only admins can modify the system prompt.",
+                ephemeral=True
+            )
+            return
+
+        if action.lower() == "clear":
+            guild_settings.get(guild_id, {}).pop("system_prompt", None)
+            save_guild_settings()
+            await interaction.response.send_message(
+                "✅ System prompt cleared.",
+                ephemeral=True
+            )
+            return
+
+        if action.lower() == "set":
+            if not value or not value.strip():
+                await interaction.response.send_message(
+                    "❌ Please provide a system prompt.",
+                    ephemeral=True
+                )
+                return
+
+            guild_settings.setdefault(guild_id, {})["system_prompt"] = value.strip()
+            save_guild_settings()
+            await interaction.response.send_message(
+                "✅ System prompt updated.",
+                ephemeral=True
+            )
+            return
+
+    # ---------------- TEMPERATURE ----------------
+    if category.lower() == "temperature":
+        if action.lower() == "show":
+            temp = get_guild_temperature(guild_id)
+            await interaction.response.send_message(
+                f"🌡️ Current temperature: **{temp}**",
+                ephemeral=True
+            )
+            return
+
+        if not is_guild_admin(interaction):
+            await interaction.response.send_message(
+                "❌ Only admins can change temperature.",
+                ephemeral=True
+            )
+            return
+
+        if action.lower() == "reset":
+            guild_settings.get(guild_id, {}).pop("temperature", None)
+            save_guild_settings()
+            await interaction.response.send_message(
+                "✅ Temperature reset to default (0.7).",
+                ephemeral=True
+            )
+            return
+
+        if action.lower() == "set":
+            try:
+                temp = float(value)
+                if not 0.0 <= temp <= 2.0:
+                    raise ValueError
+            except Exception:
+                await interaction.response.send_message(
+                    "❌ Temperature must be a number between 0.0 and 2.0.",
+                    ephemeral=True
+                )
+                return
+
+            guild_settings.setdefault(guild_id, {})["temperature"] = temp
+            save_guild_settings()
+            await interaction.response.send_message(
+                f"✅ Temperature set to **{temp}**.",
+                ephemeral=True
+            )
+            return
+
+    # ---------------- MAX TOKENS ----------------
+    if category.lower() == "max_tokens":
+        if action.lower() == "show":
+            current = get_guild_max_tokens(guild_id)
+            display = "unlimited" if current == -1 else str(current)
+            await interaction.response.send_message(
+                f"📏 Current max_tokens: **{display}**",
+                ephemeral=True
+            )
+            return
+
+        if not is_guild_admin(interaction):
+            await interaction.response.send_message(
+                "❌ Only admins can change max_tokens.",
+                ephemeral=True
+            )
+            return
+
+        if action.lower() == "reset":
+            guild_settings.get(guild_id, {}).pop("max_tokens", None)
+            save_guild_settings()
+            await interaction.response.send_message(
+                "✅ max_tokens reset to unlimited.",
+                ephemeral=True
+            )
+            return
+
+        if action.lower() == "set":
+            try:
+                value_int = int(value)
+                if value_int <= 0 and value_int != -1:
+                    raise ValueError
+            except Exception:
+                await interaction.response.send_message(
+                    "❌ max_tokens must be a positive integer or `-1` (unlimited).",
+                    ephemeral=True
+                )
+                return
+
+            guild_settings.setdefault(guild_id, {})["max_tokens"] = value_int
+            save_guild_settings()
+
+            display = "unlimited" if value_int == -1 else str(value_int)
+            await interaction.response.send_message(
+                f"✅ max_tokens set to **{display}**.",
+                ephemeral=True
+            )
+            return
+
+    # ---------------- CLEAR LAST ----------------
+    if category.lower() == "clear" and action.lower() == "last":
+        conversation_id = interaction.channel_id
+
+        history = conversation_histories.get(conversation_id, [])
+        if not history:
+            await interaction.response.send_message(
+                "ℹ️ No conversation history to clear.",
+                ephemeral=True
+            )
+            return
+
+        # Remove last assistant + user messages
+        removed = 0
+        while history and removed < 2:
+            if history[-1]["role"] in {"assistant", "user"}:
+                history.pop()
+                removed += 1
+            else:
+                break
+
+        await interaction.response.send_message(
+            "🧹 Last interaction removed.",
+            ephemeral=True
+        )
+        logger.info(f"Cleared last interaction in channel {interaction.channel_id}")
+        return
+
+    # ---------------- FALLBACK ----------------
+    await interaction.response.send_message(
+        "❌ Invalid config command.\n\n"
+        "**Usage examples:**\n"
+        "`/config system show`\n"
+        "`/config system set <prompt>`\n"
+        "`/config temperature set 0.3`\n"
+        "`/config clear last`",
+        ephemeral=True
+    )
+
+@bot.tree.command(name="help", description="Show all available bot commands")
+async def help_command(interaction: discord.Interaction):
+    help_text = """
+🤖 **Jarvis – Help**
+
+---
+### 💬 Core Commands
+• Just type a message in a monitored channel or DM to chat with the AI  
+• Attach images or text files to include them in the prompt  
+• Prefix a message with `*` to prevent the bot from responding
+
+---
+### ⚙️ Configuration (`/config`)
+*(Some options require admin permissions)*
+
+**System prompt**
+• `/config system show`  
+• `/config system set <prompt>` *(admin)*  
+• `/config system clear` *(admin)*  
+
+**Temperature**
+• `/config temperature show`  
+• `/config temperature set <0.0–2.0>` *(admin)*  
+• `/config temperature reset` *(admin)*  
+
+**Max tokens**
+• `/config max_tokens show`  
+• `/config max_tokens set <number | -1>` *(admin)*  
+• `/config max_tokens reset` *(admin)*  
+
+**Conversation tools**
+• `/config clear last` – Remove the last user/assistant exchange
+
+---
+### 🧠 Model Management
+• `/model` – Select the active AI model for this server
+
+---
+### 🔊 Voice / TTS
+• `/join` – Join your current voice channel  
+• `/leave` – Leave the voice channel  
+• `/voice` – Select the TTS voice  
+
+---
+### 📊 Utilities
+• `/reset` – Reset conversation history  
+• `/history` – Show conversation history size  
+• `/stats` – Show conversation statistics  
+
+---
+### ℹ️ Notes
+• Settings are saved per server and persist across restarts  
+• System prompts affect **all users** in the server  
+• Temperature and max_tokens affect response style and length  
+
+---
+"""
+    await interaction.response.send_message(help_text, ephemeral=True)
+
 @bot.event
 async def on_ready():
+    load_guild_settings()
+    logger.info(f"Loaded settings for {len(guild_settings)} guild(s)")
+
     """Called when the bot successfully connects to Discord."""
     logger.info(f'{bot.user} has connected to Discord!')
     logger.info(f'Bot is in {len(bot.guilds)} server(s)')
     logger.info(f'Listening in {len(CHANNEL_IDS)} channel(s): {CHANNEL_IDS}')
     logger.info(f'LMStudio URL: {LMSTUDIO_URL}')
+    
+    # Fetch available models from LMStudio
+    global available_models, default_model
+    models = await fetch_available_models()
+    if models:
+        available_models = models
+        default_model = models[0]
+        logger.info(f'Default model set to: {default_model}')
+    else:
+        logger.warning('No models found in LMStudio. Please load a model.')
     
     for channel_id in CHANNEL_IDS:
         channel = bot.get_channel(channel_id)
@@ -763,7 +1220,10 @@ async def on_message(message):
         
         username = message.author.display_name
         
-        async for chunk in query_lmstudio(conversation_id, combined_message, message.channel, username, images):
+        # Get guild_id for model selection (None for DMs)
+        guild_id = message.guild.id if not is_dm else None
+        
+        async for chunk in query_lmstudio(conversation_id, combined_message, message.channel, username, images, guild_id):
             response_text += chunk
             
             current_time = time.time()
