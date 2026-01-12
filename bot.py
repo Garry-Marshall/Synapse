@@ -269,38 +269,6 @@ def is_debug_enabled(guild_id: Optional[int]) -> bool:
         return bool(guild_settings[guild_id].get("debug", False))
     return False
 
-'''
-def guild_debug_log(
-    guild_id: Optional[int],
-    level: str,
-    message: str,
-    *args
-):
-    """
-    level: 'info' or 'debug'
-    Safe against logging format errors.
-    """
-    if not is_debug_enabled(guild_id):
-        return
-
-    guild_level = get_debug_level(guild_id)
-
-    if level == "debug" and guild_level != "debug":
-        return
-
-    # Safely format message ourselves
-    try:
-        message = str(message)
-        if args:
-            message = message % args
-    except Exception as e:
-        message = f"[LOG FORMAT ERROR] {message} | args={args} | error={e}"
-
-    message = f"[{level.upper()}] {message}"
-    logger.debug(message)
-'''
-
-
 def guild_debug_log(guild_id: Optional[int], level: str, message: str, *args):
     """Log debug messages for guilds with debug enabled."""
     if not is_debug_enabled(guild_id):
@@ -579,7 +547,7 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
                 remaining = int(SEARCH_COOLDOWN - time_since_search)
                 logger.info(f"🔍 Search cooldown active for guild {guild_id} ({remaining}s remaining)")
                 # Don't search, but inform the user
-                web_context = f"\n[Note: Search cooldown active. Wait {remaining} seconds.]\n"
+                await channel.send(f"⏱️ Search is on cooldown. Please wait {remaining} more seconds.", delete_after=10)
             else:
                 logger.info(f"🔍 Triggering web search for: '{message_text}'")
                 web_context = await get_web_context(message_text)
@@ -677,6 +645,7 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
     conversation_histories[conversation_id].append({"role": "user", "content": current_content})
     
     # 4. Build the final API Message List
+    #prompt_tokens_est = estimate_tokens(final_system_prompt)
     api_messages = []
     api_messages.append({"role": "system", "content": final_system_prompt})
 
@@ -744,17 +713,17 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
                     )
                     
                     # Store in conversation history
-                    conversation_histories[conversation_id].append({"role": "assistant", "content": assistant_message})
-                    
-                    # Stats tracking
+                    conversation_histories[conversation_id].append({
+                        "role": "assistant",
+                        "content": assistant_message
+                    })
+
+                    # ---------------- STATS TRACKING ----------------
                     response_time = time.time() - start_time
-                    # ---- RAW RESPONSE TOKEN STATS ----
-                    raw_token_count = estimate_tokens(assistant_message)
-                    # ---------------------------------
-                    # ---- TOKEN STATS ----
-                    raw_token_count = estimate_tokens(assistant_message)
 
                     assistant_message_filtered = remove_thinking_tags(assistant_message)
+
+                    raw_token_count = estimate_tokens(assistant_message)
                     cleaned_token_count = estimate_tokens(assistant_message_filtered)
 
                     logger.info(
@@ -765,10 +734,24 @@ async def query_lmstudio(conversation_id: int, message_text: str, channel, usern
                         raw_token_count - cleaned_token_count,
                         response_time
                     )
-                    # ---------------------
-                    stats = channel_stats[conversation_id]
-                    stats['total_messages'] += 2
-                    stats['response_times'].append(response_time)
+
+                    stats = channel_stats.setdefault(
+                        conversation_id,
+                        {
+                            "start_time": datetime.now(),
+                            "total_messages": 0,
+                            "total_tokens_estimate": 0,
+                            "response_times": [],
+                            "last_message_time": None,
+                        }
+                    )
+
+                    # Count ONE assistant response
+                    stats["total_messages"] += 1
+                    stats["total_tokens_estimate"] += cleaned_token_count
+                    stats["response_times"].append(response_time)
+                    stats["last_message_time"] = datetime.now()
+                    # ------------------------------------------------
                 else:
                     logger.error(f"LMStudio Error {response.status}: {await response.text()}")
                     yield f"Error: LMStudio API returned status {response.status}"
