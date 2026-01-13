@@ -61,9 +61,6 @@ from .constants import (
     MAX_PDF_CHARS,
     MAX_URL_CHARS,
     
-    # Config
-    CONFIG_CATEGORIES,
-    
     # Defaults
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TEMPERATURE,
@@ -106,7 +103,6 @@ __all__ = [
     'FILE_ENCODINGS',
     'MAX_PDF_CHARS',
     'MAX_URL_CHARS',
-    'CONFIG_CATEGORIES',
     'DEFAULT_SYSTEM_PROMPT',
     'DEFAULT_TEMPERATURE',
     'DEFAULT_MAX_TOKENS',

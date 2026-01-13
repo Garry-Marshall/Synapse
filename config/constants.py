@@ -81,20 +81,6 @@ MAX_PDF_CHARS = 40000
 # Maximum characters to extract from URLs
 MAX_URL_CHARS = 60000
 
-# ============================================================================
-# CONFIG COMMAND STRUCTURE
-# ============================================================================
-
-# Available config categories and their actions
-CONFIG_CATEGORIES = {
-    "system": ["show", "set", "clear"],
-    "temperature": ["show", "set", "reset"],
-    "max_tokens": ["show", "set", "reset"],
-    "debug": ["show", "on", "off", "level"],
-    "search": ["show", "on", "off"],
-    "clear": ["last"],
-    "show": ["show"],
-}
 
 # ============================================================================
 # DEFAULTS

@@ -116,7 +116,7 @@ def is_search_enabled(guild_id: Optional[int]) -> bool:
 
 def is_debug_enabled(guild_id: Optional[int]) -> bool:
     """Check if debug logging is enabled for a guild."""
-    return get_guild_setting(guild_id, "debug", False)
+    return get_guild_setting(guild_id, "debug", True)
 
 
 def get_debug_level(guild_id: Optional[int]) -> str:

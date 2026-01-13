@@ -44,7 +44,6 @@ from .stats_manager import (
 
 # Guild settings management
 from .guild_settings import (
-    guild_settings,
     load_guild_settings,
     save_guild_settings,
     get_guild_setting,
@@ -93,7 +92,6 @@ __all__ = [
     'set_context_loaded',
     
     # Guild settings
-    'guild_settings',
     'load_guild_settings',
     'save_guild_settings',
     'get_guild_setting',
