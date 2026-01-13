@@ -1,10 +1,10 @@
 <div align="center"> 
-🤖 Discord AI Bot with LMStudio Integration<br>
-<br>   
+<h1></h1>🤖 Discord AI Bot with LMStudio Integration</div></h1><br>
+<br>
 A powerful, modular Discord bot with local AI integration via LMStudio, featuring web search, file processing, text-to-speech, and comprehensive server configuration.<br>
 Features • Quick Start • Commands • Configuration • Development<br>
 </div> 
-________________________________________<br>
+<hr>
 ✨ Features<br>
 <table> <tr> <td width="50%"> 
 🧠 AI Capabilities<br>
@@ -34,7 +34,7 @@ ________________________________________<br>
 •	✅ History Management - Clear, reset, or view conversation history<br>
 •	✅ Persistent Storage - Stats and settings saved across restarts<br>
 </td> </tr> </table> 
-________________________________________
+<hr>
 📁 Project Structure
 discord_bot/
 │
