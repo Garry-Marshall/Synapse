@@ -9,7 +9,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Dict
 
-from config.settings import STATS_FILE
+from config.settings import STATS_FILE, MAX_HISTORY
 
 
 logger = logging.getLogger(__name__)
@@ -250,10 +250,19 @@ def add_message_to_history(conversation_id: int, role: str, content) -> None:
         role: Message role ("user" or "assistant")
         content: Message content (string or list for multimodal)
     """
-    conversation_histories[conversation_id].append({
+    history = conversation_histories[conversation_id]
+
+    history.append({
         "role": role,
         "content": content
     })
+
+    # Enforce history limit
+    if MAX_HISTORY > 0:
+        excess = len(history) - MAX_HISTORY
+        if excess > 0:
+            logger.debug(f"Trimmed {excess} messages from history for {conversation_id}")
+            del history[0:excess]
 
 
 def get_conversation_history(conversation_id: int) -> list:
