@@ -90,65 +90,57 @@ AllTalk TTS        Optional           <a href="https://github.com/erew123/alltal
 <b>Installation</b><br>
 <details> <summary><b>📥 Step 1: Clone Repository</b></summary> <br>
 # Clone or download the repository<br>
-git clone https://github.com/Garry-Marshall/Jarvis<br>
-cd Jarvis<br>
+<pre>
+    git clone https://github.com/Garry-Marshall/Jarvis
+    cd Jarvis
+</pre>
 <br>
 # Create virtual environment (recommended)<br>
-python -m venv venv<br>
+<pre>
+    python -m venv venv
+</pre>
 <br>
 # Activate virtual environment<br>
 # On Linux/Mac:<br>
-source venv/bin/activate<br>
+<pre>
+    source venv/bin/activate
+</pre>
 <br>
 # On Windows:<br>
-venv\Scripts\activate<br>
-</details> <details> <summary><b>📦 Step 2: Install Dependencies</b></summary> <br>
-pip install -r requirements.txt<br>
-</details> <details> <summary><b>⚙️ Step 3: Configure Bot</b></summary> <br>
+<pre>
+    venv\Scripts\activate
+</pre>
+</details>
+
+<details> <summary><b>📦 Step 2: Install Dependencies</b></summary> <br>
+<pre>
+    pip install -r requirements.txt
+</pre>
+</details>
+
+<details> <summary><b>⚙️ Step 3: Configure Bot</b></summary> <br>
 Create a .env file in the project root:<br>
+(This file will be created automatically on first run.)
 <br>
-# REQUIRED: Your Discord bot token<br>
-DISCORD_BOT_TOKEN=your-bot-token-here<br>
-<br>
-'#' REQUIRED: Comma-separated channel IDs where bot should respond<br>
-DISCORD_CHANNEL_IDS=123456789012345678,987654321098765432<br>
-<br>
-# LMStudio API (default: localhost)<br>
-LMSTUDIO_URL=http://localhost:1234/v1/chat/completions<br>
-<br>
-# Conversation settings<br>
-MAX_HISTORY_MESSAGES=10<br>
-CONTEXT_MESSAGES=5<br>
-<br>
-# Bot behavior<br>
-IGNORE_BOTS=true<br>
-ALLOW_DMS=true<br>
-<br>
-# File processing<br>
-ALLOW_IMAGES=true<br>
-MAX_IMAGE_SIZE=5<br>
-ALLOW_TEXT_FILES=true<br>
-MAX_TEXT_FILE_SIZE=2<br>
-ALLOW_PDF=true<br>
-MAX_PDF_SIZE=10<br>
-<br>
-# Model settings<br>
-HIDE_THINKING=true<br>
-<br>
-# Voice/TTS settings<br>
-ENABLE_TTS=true<br>
-ALLTALK_URL=http://127.0.0.1:7851<br>
-ALLTALK_VOICE=alloy<br>
-<br>
-    
-</details> <details> <summary><b>🔑 Step 4: Get Channel IDs</b></summary> <br>
+<pre>
+Edit the .env file:
+Replace 'your-bot-token-here' with your Discord Bot Token.
+Replace example CHANNEL_IDS with comma-separated channel IDs where bot should respond
+</pre>
+</details>
+
+<details> <summary><b>🔑 Step 4: Get Channel IDs</b></summary> <br>
 1.	Enable Developer Mode in Discord <br>
 o	Settings → Advanced → Developer Mode ✅<br>
 2.	Right-click a channel → Copy ID<br>
 3.	Add to DISCORD_CHANNEL_IDS in .env <br>
 o	Multiple channels: comma-separated<br>
-</details> <details> <summary><b>▶️ Step 5: Run the Bot</b></summary> <br>
-python bot.py<br>
+</details>
+
+<details> <summary><b>▶️ Step 5: Run the Bot</b></summary> <br>
+<pre>
+    start_bot.bat
+</pre>
 Expected output:<br>
 
 `2026-01-13 10:00:00 [INFO] Bot has connected to Discord!`<br>
@@ -187,21 +179,34 @@ Bot: This document discusses quarterly sales performance,<br>
 </pre>
 
 <h4>⚙️ Configuration</h4>
-Note: Commands marked with 🔒 require Administrator permissions<br>
+Note: Commands that change settings require Administrator permissions 🔒 <br>
 <br>
 <pre>
-<b>Command                        Description                Example</b>
-/config show                    View all settings            /config show
-/config system set 🔒          Set custom system prompt      /config system set You are a helpful coding assistant
-/config system show             View current system prompt   /config system show
-/config system clear 🔒        Reset to default prompt       /config system clear
-/config temperature set 🔒	   Adjust creativity (0.0-2.0)   /config temperature set 0.8
-/config temperature show       View current temperature      /config temperature show
-/config max_tokens set 🔒      Limit response length         /config max_tokens set 2000
-/config max_tokens show        View current limit            /config max_tokens show
-/config debug on|off 🔒       Toggle debug logging           /config debug on
-/config search on|off 🔒      Toggle web search              /config search off
-/config clear last             Remove last interaction       /config clear last
+The /config command will open up a dialog box where per guild settings can be adjusted.
+
+    Edit System Prompt            Set a custom system prompt that gets injected in every interaction with the LLM
+                                  This will greatly affect how to bot behaves.
+                                     Example: You are a python coding assistant.
+                                     Example: You always talk like a pirate.
+
+    Adjust Temperature            Value between 0.0 and 2.0. Affects how strict the LLM will follow the prompt.
+                                  See below for more details.
+
+    Set Max Tokens                Set a limit on the maximum tokens that can be sent back and forth.
+
+    Debug: ON|OFF                 Toggle between Debug On or Off. Debug info appears on the console and in the log files.
+
+    Set Debug Level               Choose between INFO and DEBUG. Sets the verbosity of the logs.
+
+    Web Search ON|OFF             Toggles the ability to search the web On or Off.
+
+    TTS ON|OFF                    Toggles the Text-to-Speech for Voice channels On or Off.
+
+    Clear Last Message            Removes the last interaction from the history.
+
+    Clear All History             Removes all history.
+
+    Reset to Defaults             Resets all Config settings to their default values.
 </pre>
 <br>
 <h4>🧠 Model & Voice</h4>
@@ -220,17 +225,8 @@ Note: Commands marked with 🔒 require Administrator permissions<br>
 </pre>
 <hr>
 <h4>🔧 Advanced Configuration</h4>
-<details> <summary><b>🧠 Custom System Prompts</b></summary> <br>
-<pre>
-Set a unique personality per server:<br>
-/config system set You are a helpful coding assistant specializing in Python and JavaScript. Always provide code examples and explain your reasoning.
-
-Examples:
-•	Customer Support: You are a friendly customer support agent. Be empathetic and solution-focused.
-•	Tutor: You are an experienced teacher. Explain concepts clearly with examples and analogies.
-•	Creative Writer: You are a creative writing assistant. Help with storytelling, character development, and plot ideas.
-</pre>
-</details> <details> <summary><b>🌡️ Temperature Settings</b></summary> <br>
+  
+<summary><b>🌡️ Temperature Settings</b></summary> <br>
 <pre>
 Control response creativity and randomness:
     
@@ -240,53 +236,7 @@ Control response creativity and randomness:
 0.8 - 1.2          Creative, varied                Brainstorming, creative writing
 1.3 - 2.0          Highly creative, unpredictable  Experimental, artistic content
 
-/config temperature set 0.8
 </pre>
-
-</details> <details> <summary><b>📝 Token Limits</b></summary> <br>
-Control maximum response length:<br>
-# Limit to 2000 tokens<br>
-/config max_tokens set 2000<br>
-<br>
-# Unlimited tokens<br>
-/config max_tokens set -1<br>
-<br>
-# View current setting<br>
-/config max_tokens show<br>
-Note: Actual output length may be shorter depending on model and prompt.<br>
-</details> <details> <summary><b>🐞 Debug Logging</b></summary> <br>
-Enable detailed logging for troubleshooting:<br>
-# Enable debug mode<br>
-/config debug on<br>
-<br>
-# Set log level<br>
-/config debug level debug  # Verbose<br>
-/config debug level info   # Standard<br>
-<br>
-# View current settings<br>
-/config debug show<br>
-Logs are saved to: Logs/bot_YYYY-MM-DD.log<br>
-Debug info includes:<br><br>
-•	Full API messages (with thinking tags)<br>
-•	Token counts and timing<br>
-•	Search context details<br>
-•	Error stack traces<br>
-</details> <details> <summary><b>🔍 Web Search Control</b></summary> 
-Toggle automatic web search per server:<br>
-# Disable web search<br>
-/config search off<br>
-<br>
-# Enable web search<br>
-/config search on<br>
-<br>
-# Check status<br>
-/config search show<br>
-Search Triggers: The bot automatically searches when messages contain phrases like:<br>
-•	"search for..."<br>
-•	"what's the latest..."<br>
-•	"current news about..."<br>
-•	"weather in..."<br>
-</details>
 <hr>
 
 <h4>🐛 Troubleshooting</h4>
@@ -316,7 +266,8 @@ o	Check in Server Settings → Roles → Your Bot Role
 2.	Navigate to "Models" tab
 3.	Click "Load Model" for your desired model
 4.	Wait for model to fully load (status bar shows 100%)
-5.	Restart the Discord bot
+5.  Start the server under Developer
+6.	Restart the Discord bot
 Verify:
 -> You should see in logs:
 [INFO] Loaded LM Studio model(s): ['your-model-name']
@@ -375,6 +326,7 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=41
 Checklist:
     •	[ ] ENABLE_TTS=true in .env
     •	[ ] AllTalk TTS running at ALLTALK_URL
+    •	[ ] Enable TTS in Guild via /config
     •	[ ] Bot is in voice channel (/join)
     •	[ ] Bot has Connect and Speak permissions
     •	[ ] FFmpeg installed (required for audio playback)
