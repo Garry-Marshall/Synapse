@@ -1,5 +1,5 @@
 """
-Web search service using DuckDuckGo.
+Web search service using DDGS (Dux Distributed Global Search).
 Provides search functionality with cooldown management.
 """
 import logging
@@ -22,32 +22,85 @@ logger = logging.getLogger(__name__)
 search_cooldowns: Dict[int, float] = {}
 
 
-async def get_web_context(query: str, max_results: int = MAX_SEARCH_RESULTS) -> str:
+async def get_web_context(
+    query: str, 
+    max_results: int = MAX_SEARCH_RESULTS,
+    region: str = "wt-wt",  # Worldwide
+    safesearch: str = "moderate",
+    backend: str = "auto"  # Let DDGS choose best backend
+) -> str:
     """
-    Fetch search snippets from DuckDuckGo.
+    Fetch search snippets from DDGS metasearch.
     
     Args:
         query: Search query
         max_results: Maximum number of results to fetch
+        region: Search region (wt-wt for worldwide, us-en, etc.)
+        safesearch: Safe search setting (on, moderate, off)
+        backend: Search backend(s) to use (auto, duckduckgo, google, bing, etc.)
         
     Returns:
         Formatted search results string, or empty string if failed
     """
     try:
-        with DDGS() as ddgs:
-            results = [r for r in ddgs.text(query, max_results=max_results)]
-            if not results:
-                logger.warning(f"No search results for: {query}")
-                return ""
+        # Initialize DDGS with timeout and optional proxy
+        ddgs = DDGS(timeout=10)  # Increase timeout for reliability
+        
+        # Perform search with backend selection
+        results = ddgs.text(
+            query=query,
+            region=region,
+            safesearch=safesearch,
+            max_results=max_results,
+            backend=backend
+        )
+        
+        if not results:
+            logger.warning(f"No search results for: {query}")
+            return ""
+        
+        # Format results with source attribution
+        formatted_results = []
+        for i, r in enumerate(results, 1):
+            title = r.get('title', 'No title')
+            href = r.get('href', 'No URL')
+            body = r.get('body', 'No description')
             
-            context = "\n".join([
-                f"Source: {r['href']}\nContent: {r['body']}" 
-                for r in results
-            ])
-            return f"\n--- WEB SEARCH RESULTS ---\n{context}\n--------------------------\n"
+            formatted_results.append(
+                f"[{i}] {title}\n"
+                f"URL: {href}\n"
+                f"Summary: {body}\n"
+            )
+        
+        context = "\n".join(formatted_results)
+        return f"\n--- WEB SEARCH RESULTS ({len(results)} sources) ---\n{context}--------------------------\n"
             
     except Exception as e:
         logger.error(f"Search error for '{query}': {e}", exc_info=True)
+        # Try fallback to DuckDuckGo only if auto fails
+        if backend == "auto":
+            try:
+                logger.info("Retrying search with DuckDuckGo backend only...")
+                ddgs = DDGS(timeout=10)
+                results = ddgs.text(
+                    query=query,
+                    region=region,
+                    safesearch=safesearch,
+                    max_results=max_results,
+                    backend="duckduckgo"
+                )
+                if results:
+                    formatted_results = []
+                    for i, r in enumerate(results, 1):
+                        formatted_results.append(
+                            f"[{i}] {r.get('title', 'No title')}\n"
+                            f"URL: {r.get('href', 'No URL')}\n"
+                            f"Summary: {r.get('body', 'No description')}\n"
+                        )
+                    context = "\n".join(formatted_results)
+                    return f"\n--- WEB SEARCH RESULTS ({len(results)} sources) ---\n{context}--------------------------\n"
+            except Exception as fallback_error:
+                logger.error(f"Fallback search also failed: {fallback_error}")
         return ""
 
 
