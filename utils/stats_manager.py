@@ -129,7 +129,7 @@ def get_or_create_stats(conversation_id: int) -> dict:
     """
     if conversation_id not in channel_stats:
         channel_stats[conversation_id] = create_empty_stats()
-        save_stats()
+    save_stats()
     
     return channel_stats[conversation_id]
 
