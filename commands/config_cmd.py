@@ -7,9 +7,20 @@ from discord import app_commands
 from typing import Optional
 import logging
 
-from utils.settings_manager import get_guild_setting, set_guild_setting, delete_guild_setting, get_guild_temperature, get_guild_max_tokens, is_debug_enabled, get_debug_level, is_search_enabled
-from utils.stats_manager import get_conversation_history, clear_conversation_history
-
+from utils.settings_manager import (
+    get_guild_setting,
+    set_guild_setting,
+    delete_guild_setting,
+    get_guild_temperature,
+    get_guild_max_tokens,
+    is_debug_enabled,
+    get_debug_level,
+    is_search_enabled
+)
+from utils.stats_manager import (
+    get_conversation_history,
+    clear_conversation_history
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +51,14 @@ class SystemPromptModal(discord.ui.Modal, title="System Prompt Configuration"):
     
     async def on_submit(self, interaction: discord.Interaction):
         prompt_value = self.system_prompt.value.strip()
+        
+        # Validate length
+        if len(prompt_value) > 10000:
+            await interaction.response.send_message(
+                "❌ System prompt too long (max 10,000 characters).",
+                ephemeral=True
+            )
+            return
         
         if prompt_value:
             set_guild_setting(self.guild_id, "system_prompt", prompt_value)

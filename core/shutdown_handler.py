@@ -5,8 +5,7 @@ Ensures stats and settings are saved before bot exits.
 import signal
 import sys
 import logging
-import asyncio
-from typing import Optional
+import atexit
 
 logger = logging.getLogger(__name__)
 
@@ -27,60 +26,32 @@ class ShutdownHandler:
         """
         self.bot = bot
         self.shutdown_initiated = False
-        
-    async def cleanup(self):
-        """Perform cleanup operations before shutdown."""
+    
+    def cleanup(self):
+        """Perform synchronous cleanup operations before shutdown."""
         if self.shutdown_initiated:
             return
         
         self.shutdown_initiated = True
         logger.info("🛑 Initiating graceful shutdown...")
         
+        # Save statistics
         try:
-            # Save statistics
             logger.info("💾 Saving statistics...")
             from utils.stats_manager import save_stats
             save_stats()
             logger.info("✅ Statistics saved")
-            
         except Exception as e:
             logger.error(f"❌ Error saving statistics: {e}", exc_info=True)
         
+        # Save guild settings
         try:
-            # Save guild settings
             logger.info("💾 Saving guild settings...")
             from utils.settings_manager import save_guild_settings
             save_guild_settings()
             logger.info("✅ Guild settings saved")
-            
         except Exception as e:
             logger.error(f"❌ Error saving guild settings: {e}", exc_info=True)
-        
-        try:
-            # Disconnect from all voice channels
-            logger.info("🔇 Disconnecting from voice channels...")
-            from commands.voice import voice_clients
-            
-            disconnect_tasks = []
-            for guild_id, voice_client in list(voice_clients.items()):
-                if voice_client.is_connected():
-                    disconnect_tasks.append(voice_client.disconnect())
-            
-            if disconnect_tasks:
-                await asyncio.gather(*disconnect_tasks, return_exceptions=True)
-                logger.info(f"✅ Disconnected from {len(disconnect_tasks)} voice channel(s)")
-            
-        except Exception as e:
-            logger.error(f"❌ Error disconnecting from voice: {e}", exc_info=True)
-        
-        try:
-            # Close the bot connection
-            logger.info("🔌 Closing bot connection...")
-            await self.bot.close()
-            logger.info("✅ Bot connection closed")
-            
-        except Exception as e:
-            logger.error(f"❌ Error closing bot connection: {e}", exc_info=True)
         
         logger.info("👋 Shutdown complete")
     
@@ -95,22 +66,10 @@ class ShutdownHandler:
         signal_name = signal.Signals(sig).name
         logger.info(f"📡 Received signal: {signal_name}")
         
-        # Create cleanup task
-        loop = None
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            # No running loop, create one
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        # Run cleanup immediately (synchronous)
+        self.cleanup()
         
-        # Schedule cleanup
-        if loop.is_running():
-            asyncio.create_task(self.cleanup())
-        else:
-            loop.run_until_complete(self.cleanup())
-            loop.close()
-        
+        # Exit gracefully
         sys.exit(0)
 
 
@@ -122,6 +81,9 @@ def setup_shutdown_handlers(bot):
         bot: Discord bot instance
     """
     handler = ShutdownHandler(bot)
+    
+    # Register atexit handler (runs on any exit)
+    atexit.register(handler.cleanup)
     
     # Register signal handlers
     signal.signal(signal.SIGINT, handler.handle_signal)   # Ctrl+C

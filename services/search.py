@@ -18,6 +18,21 @@ logger = logging.getLogger(__name__)
 search_cooldowns: Dict[int, float] = {}
 
 
+def cleanup_old_cooldowns() -> None:
+    """Remove search cooldowns older than 1 hour to prevent memory leak."""
+    current_time = time.time()
+    old_guilds = [
+        guild_id for guild_id, timestamp in search_cooldowns.items()
+        if current_time - timestamp > 3600  # 1 hour
+    ]
+    
+    for guild_id in old_guilds:
+        del search_cooldowns[guild_id]
+    
+    if old_guilds:
+        logger.debug(f"Cleaned up {len(old_guilds)} old search cooldowns")
+
+
 async def get_web_context(
     query: str, 
     max_results: int = MAX_SEARCH_RESULTS,

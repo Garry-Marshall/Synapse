@@ -24,6 +24,7 @@ from services.search import (
     check_search_cooldown,
     update_search_cooldown,
     search_cooldowns,
+    cleanup_old_cooldowns,
 )
 
 # Content fetching service
@@ -57,6 +58,7 @@ __all__ = [
     'check_search_cooldown',
     'update_search_cooldown',
     'search_cooldowns',
+    'cleanup_old_cooldowns',
     
     # Content fetch
     'fetch_url_content',

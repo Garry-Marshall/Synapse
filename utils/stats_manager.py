@@ -5,12 +5,14 @@ Manages conversation statistics per channel/DM.
 import json
 import logging
 import os
+import threading
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Dict
 
 from config.settings import STATS_FILE, MAX_HISTORY
-from config.constants import MAX_RESPONSE_TIMES, INACTIVITY_THRESHOLD_DAYS
+from config.constants import MAX_RESPONSE_TIMES
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,14 @@ context_loaded: Dict[int, bool] = defaultdict(bool)
 
 # Store statistics per channel/DM
 channel_stats: Dict[int, Dict] = {}
+
+# Inactivity threshold for cleanup (30 days)
+INACTIVITY_THRESHOLD_DAYS = 30
+
+# Save batching to reduce disk I/O
+_last_save_time = time.time()
+_save_lock = threading.Lock()
+SAVE_INTERVAL = 300  # Save every 5 minutes instead of every update
 
 
 def create_empty_stats() -> dict:
@@ -154,6 +164,24 @@ def save_stats() -> None:
         logger.error(f"Could not write stats file: {e}")
 
 
+def save_stats_if_needed(force: bool = False) -> None:
+    """
+    Save statistics if enough time has passed since last save.
+    
+    Args:
+        force: If True, save regardless of time interval
+    """
+    global _last_save_time
+    current_time = time.time()
+    
+    with _save_lock:
+        if force or (current_time - _last_save_time > SAVE_INTERVAL):
+            save_stats()
+            _last_save_time = current_time
+            if not force:
+                logger.debug(f"Auto-saved stats (interval: {SAVE_INTERVAL}s)")
+
+
 def get_or_create_stats(conversation_id: int) -> dict:
     """
     Get stats for a conversation, creating empty stats if needed.
@@ -237,7 +265,8 @@ def update_stats(
         if tool_used in stats["tool_usage"]:
             stats["tool_usage"][tool_used] += 1
     
-    save_stats()
+    # Save periodically instead of every time
+    save_stats_if_needed()
 
 
 def reset_stats(conversation_id: int) -> None:

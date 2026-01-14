@@ -193,9 +193,13 @@ async def stream_completion(
                                 break
                             try:
                                 data = json.loads(data_str)
-                                content = data['choices'][0].get('delta', {}).get('content', '')
-                                if content:
-                                    yield content
+                                # Check if choices array exists and has elements
+                                if 'choices' in data and len(data['choices']) > 0:
+                                    content = data['choices'][0].get('delta', {}).get('content', '')
+                                    if content:
+                                        yield content
+                                else:
+                                    logger.warning('SSE data missing choices array')
                             except json.JSONDecodeError as e:
                                 logger.debug(f'Received non-JSON SSE data: {e}')
                                 continue

@@ -84,6 +84,14 @@ def setup_model_command(tree: app_commands.CommandTree):
     @tree.command(name='model', description='Select AI model (Admin only)')
     async def select_model(interaction: discord.Interaction):
         """Show dropdown to select AI model."""
+        # Check if in a guild (not DM)
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "❌ This command only works in servers, not DMs.",
+                ephemeral=True
+            )
+            return
+        
         # Check admin permissions
         if not is_guild_admin(interaction):
             await interaction.response.send_message(

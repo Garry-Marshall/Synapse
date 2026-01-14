@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 
 from config.settings import LMSTUDIO_URL, ALLTALK_URL, ENABLE_TTS
 from services.lmstudio import fetch_available_models
-from commands.model import default_model, available_models
+from commands.model import default_model, get_selected_model
 from utils.stats_manager import channel_stats, conversation_histories
 
 logger = logging.getLogger(__name__)
@@ -192,9 +192,16 @@ def setup_status_command(tree: app_commands.CommandTree):
         lm_healthy, lm_status, lm_time = await check_lmstudio_health()
         tt_healthy, tt_status, tt_time = await check_alltalk_health()
         
+        # Fetch fresh model list
+        current_models = await fetch_available_models()
+        
         # Get system stats
         sys_stats = get_system_stats()
         bot_stats = get_bot_stats()
+        
+        # Determine current model for this guild
+        guild_id = interaction.guild.id if interaction.guild else None
+        current_model = get_selected_model(guild_id)
         
         # Create status embed
         embed = discord.Embed(
@@ -222,14 +229,16 @@ def setup_status_command(tree: app_commands.CommandTree):
         
         # Model Info
         model_info = (
-            f"**Current Model**: {default_model}\n"
-            f"**Available Models**: {len(available_models)}\n"
+            f"**Current Model**: {current_model}\n"
+            f"**Available Models**: {len(current_models)}\n"
         )
-        if available_models:
-            models_list = ", ".join(available_models[:3])
-            if len(available_models) > 3:
-                models_list += f", +{len(available_models) - 3} more"
+        if current_models:
+            models_list = ", ".join(current_models[:3])
+            if len(current_models) > 3:
+                models_list += f", +{len(current_models) - 3} more"
             model_info += f"└ {models_list}"
+        else:
+            model_info += f"└ ⚠️ No models loaded in LMStudio"
         
         embed.add_field(
             name="🧠 AI Models",

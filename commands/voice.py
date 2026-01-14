@@ -84,6 +84,13 @@ def setup_voice_commands(tree: app_commands.CommandTree):
     
     @tree.command(name='join', description='Join your voice channel')
     async def join_voice(interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "❌ This command only works in servers, not DMs.",
+                ephemeral=True
+            )
+            return
+        
         guild_id = interaction.guild.id
         
         # Use helper function for consistent error messaging
@@ -118,6 +125,13 @@ def setup_voice_commands(tree: app_commands.CommandTree):
     
     @tree.command(name='leave', description='Leave the voice channel')
     async def leave_voice(interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "❌ This command only works in servers, not DMs.",
+                ephemeral=True
+            )
+            return
+        
         guild_id = interaction.guild.id
         if guild_id not in voice_clients or not voice_clients[guild_id].is_connected():
             await interaction.response.send_message("❌ I'm not in a voice channel!", ephemeral=True)
@@ -131,6 +145,13 @@ def setup_voice_commands(tree: app_commands.CommandTree):
     
     @tree.command(name='voice', description='Select TTS voice')
     async def select_voice(interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "❌ This command only works in servers, not DMs.",
+                ephemeral=True
+            )
+            return
+        
         guild_id = interaction.guild.id
         
         # Use helper function for consistent error messaging

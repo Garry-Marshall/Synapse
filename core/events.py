@@ -19,7 +19,7 @@ from utils.stats_manager import add_message_to_history, update_stats, is_context
 from services.lmstudio import build_api_messages, stream_completion
 from services.content_fetch import process_message_urls
 from services.file_processor import process_all_attachments
-from services.search import should_trigger_search, check_search_cooldown, get_web_context, update_search_cooldown
+from services.search import should_trigger_search, check_search_cooldown, get_web_context, update_search_cooldown, cleanup_old_cooldowns
 from services.tts import text_to_speech
 
 from commands.model import initialize_models, get_selected_model
@@ -125,7 +125,9 @@ def setup_events(bot):
         
         # Clean up old conversations on startup
         cleanup_old_conversations()
-    
+
+        # Clean up old search cooldowns (NEW!)
+        cleanup_old_cooldowns()
     
     @bot.event
     async def on_message(message):
