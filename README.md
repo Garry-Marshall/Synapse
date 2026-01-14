@@ -51,7 +51,6 @@ discord_bot/<br>
 │   ├── logging_config.py
 │   ├── text_utils.py
 │   ├── stats_manager.py
-│   ├── guild_settings.py
 │   ├── settings_manager.py
 │   └── __init__.py
 │
