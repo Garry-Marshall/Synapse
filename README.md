@@ -52,6 +52,7 @@ discord_bot/<br>
 │   ├── text_utils.py
 │   ├── stats_manager.py
 │   ├── guild_settings.py
+│   ├── settings_manager.py
 │   └── __init__.py
 │
 ├── 📁 services/              # Business logic
