@@ -18,6 +18,26 @@ logger = logging.getLogger(__name__)
 voice_clients: Dict[int, discord.VoiceClient] = {}
 
 
+def check_tts_enabled(guild_id: int) -> tuple[bool, Optional[str]]:
+    """
+    Check if TTS is enabled for a guild and return appropriate error message.
+    
+    Args:
+        guild_id: Guild ID to check
+        
+    Returns:
+        Tuple of (is_enabled, error_message)
+        error_message is None if TTS is enabled
+    """
+    if not ENABLE_TTS:
+        return False, "❌ TTS is currently disabled globally in the bot configuration."
+    
+    if not is_tts_enabled_for_guild(guild_id):
+        return False, "❌ TTS is disabled for this server. An admin can enable it using '/config'."
+    
+    return True, None
+
+
 class VoiceSelectView(discord.ui.View):
     """View with dropdown for voice selection."""
     def __init__(self, current_voice: str):
@@ -56,7 +76,7 @@ class VoiceSelectDropdown(discord.ui.Select):
             f"✅ Voice changed to: **{selected_voice}**",
             ephemeral=True
         )
-        logger.info(f"Voice changed to '{selected_voice}' in {interaction.guild.name}")
+        logger.info(f"Voice changed to '{selected_voice}' in guild {guild_id} ({interaction.guild.name})")
 
 
 def setup_voice_commands(tree: app_commands.CommandTree):
@@ -66,11 +86,10 @@ def setup_voice_commands(tree: app_commands.CommandTree):
     async def join_voice(interaction: discord.Interaction):
         guild_id = interaction.guild.id
         
-        if not is_tts_enabled_for_guild(guild_id):
-            if not ENABLE_TTS:
-                await interaction.response.send_message("❌ TTS is currently disabled globally in the bot configuration.", ephemeral=True)
-            else:
-                await interaction.response.send_message("❌ TTS is disabled for this server. An admin can enable it using '/config'.", ephemeral=True)
+        # Use helper function for consistent error messaging
+        is_enabled, error_msg = check_tts_enabled(guild_id)
+        if not is_enabled:
+            await interaction.response.send_message(error_msg, ephemeral=True)
             return
         
         if not interaction.user.voice or not interaction.user.voice.channel:
@@ -85,14 +104,16 @@ def setup_voice_commands(tree: app_commands.CommandTree):
                 return
             await voice_clients[guild_id].move_to(voice_channel)
             await interaction.response.send_message(f"✅ Moved to {voice_channel.name}!", ephemeral=True)
+            logger.info(f"Moved to voice channel '{voice_channel.name}' in guild {guild_id}")
             return
         
         try:
             voice_client = await voice_channel.connect()
             voice_clients[guild_id] = voice_client
             await interaction.response.send_message(f"✅ Joined {voice_channel.name}!", ephemeral=True)
+            logger.info(f"Joined voice channel '{voice_channel.name}' in guild {guild_id}")
         except Exception as e:
-            logger.error(f"Error joining: {e}")
+            logger.error(f"Error joining voice channel in guild {guild_id}: {e}", exc_info=True)
             await interaction.response.send_message(f"❌ Failed to join voice channel: {str(e)}", ephemeral=True)
     
     @tree.command(name='leave', description='Leave the voice channel')
@@ -102,16 +123,20 @@ def setup_voice_commands(tree: app_commands.CommandTree):
             await interaction.response.send_message("❌ I'm not in a voice channel!", ephemeral=True)
             return
         
+        channel_name = voice_clients[guild_id].channel.name if voice_clients[guild_id].channel else "unknown"
         await voice_clients[guild_id].disconnect()
         del voice_clients[guild_id]
         await interaction.response.send_message("✅ Left the voice channel.", ephemeral=True)
+        logger.info(f"Left voice channel '{channel_name}' in guild {guild_id}")
     
     @tree.command(name='voice', description='Select TTS voice')
     async def select_voice(interaction: discord.Interaction):
         guild_id = interaction.guild.id
         
-        if not is_tts_enabled_for_guild(guild_id):
-            await interaction.response.send_message("❌ TTS is currently disabled globally in the bot configuration.", ephemeral=True)
+        # Use helper function for consistent error messaging
+        is_enabled, error_msg = check_tts_enabled(guild_id)
+        if not is_enabled:
+            await interaction.response.send_message(error_msg, ephemeral=True)
             return
         
         # Pull from persistent settings
@@ -131,5 +156,25 @@ def setup_voice_commands(tree: app_commands.CommandTree):
 
 
 def get_voice_client(guild_id: int) -> Optional[discord.VoiceClient]:
-    """Get the voice client for a guild."""
+    """
+    Get the voice client for a guild.
+    
+    Args:
+        guild_id: Guild ID
+        
+    Returns:
+        Voice client if connected, None otherwise
+    """
     return voice_clients.get(guild_id)
+
+
+def remove_voice_client(guild_id: int) -> None:
+    """
+    Remove voice client for a guild from tracking.
+    
+    Args:
+        guild_id: Guild ID
+    """
+    if guild_id in voice_clients:
+        del voice_clients[guild_id]
+        logger.debug(f"Removed voice client for guild {guild_id}")

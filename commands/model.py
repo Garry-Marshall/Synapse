@@ -4,7 +4,7 @@ Handles /model command for switching AI models.
 """
 import discord
 from discord import app_commands
-from typing import Dict, List
+from typing import Dict, List, Optional
 import logging
 
 from services.lmstudio import fetch_available_models
@@ -16,6 +16,13 @@ logger = logging.getLogger(__name__)
 available_models: List[str] = []
 default_model: str = DEFAULT_MODEL
 selected_models: Dict[int, str] = {}
+
+
+def is_guild_admin(interaction: discord.Interaction) -> bool:
+    """Check if the user has admin permissions in the guild."""
+    if not interaction.guild or not interaction.user:
+        return False
+    return interaction.user.guild_permissions.administrator
 
 
 class ModelSelectView(discord.ui.View):
@@ -63,7 +70,7 @@ class ModelSelectDropdown(discord.ui.Select):
             f"✅ Model changed to: **{selected_model}**",
             ephemeral=True
         )
-        logger.info(f"Model changed to '{selected_model}' in {interaction.guild.name}")
+        logger.info(f"Model changed to '{selected_model}' in guild {guild_id} ({interaction.guild.name})")
 
 
 def setup_model_command(tree: app_commands.CommandTree):
@@ -74,9 +81,17 @@ def setup_model_command(tree: app_commands.CommandTree):
         tree: Discord command tree to register commands with
     """
     
-    @tree.command(name='model', description='Select AI model')
+    @tree.command(name='model', description='Select AI model (Admin only)')
     async def select_model(interaction: discord.Interaction):
         """Show dropdown to select AI model."""
+        # Check admin permissions
+        if not is_guild_admin(interaction):
+            await interaction.response.send_message(
+                "❌ Only admins can change the model.", 
+                ephemeral=True
+            )
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         # Refresh available models
@@ -110,27 +125,47 @@ def setup_model_command(tree: app_commands.CommandTree):
         )
 
 
-def get_selected_model(guild_id: int) -> str:
+def get_selected_model(guild_id: Optional[int]) -> str:
     """
     Get the selected model for a guild.
     
     Args:
-        guild_id: Guild ID
+        guild_id: Guild ID (None for DMs)
         
     Returns:
         Model identifier
     """
-    return selected_models.get(guild_id, default_model)
+    if guild_id is None:
+        # For DMs, use default model
+        model = default_model
+        logger.debug(f"Using default model for DM: {model}")
+        return model
+    
+    model = selected_models.get(guild_id, default_model)
+    if guild_id not in selected_models:
+        logger.debug(f"No model selected for guild {guild_id}, using default: {model}")
+    else:
+        logger.debug(f"Using selected model for guild {guild_id}: {model}")
+    
+    return model
 
 
-async def initialize_models():
-    """Initialize available models from LMStudio."""
+async def initialize_models() -> bool:
+    """
+    Initialize available models from LMStudio.
+    
+    Returns:
+        True if models were successfully loaded, False otherwise
+    """
     global available_models, default_model
     
     models = await fetch_available_models()
     if models:
         available_models = models
         default_model = models[0]
+        logger.info(f'✅ Loaded {len(models)} model(s) from LMStudio')
         logger.info(f'Default model set to: {default_model}')
+        return True
     else:
-        logger.warning('No models found in LMStudio. Please load a model.')
+        logger.error('❌ No models found in LMStudio. Please load a model.')
+        return False

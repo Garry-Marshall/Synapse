@@ -256,7 +256,7 @@ class ConfigView(discord.ui.View):
             inline=True
         )
         embed.add_field(
-            name="🐞 Debug Mode",
+            name="🐛 Debug Mode",
             value=f"{'ON' if debug_enabled else 'OFF'} (level: {debug_level.upper()})",
             inline=True
         )
@@ -301,7 +301,7 @@ class ConfigView(discord.ui.View):
         modal = MaxTokensModal(self.guild_id, current)
         await interaction.response.send_modal(modal)
     
-    @discord.ui.button(label="Debug: OFF", style=discord.ButtonStyle.secondary, emoji="🐞", row=1)
+    @discord.ui.button(label="Debug: OFF", style=discord.ButtonStyle.secondary, emoji="🐛", row=1)
     async def toggle_debug(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not is_guild_admin(interaction):
             await interaction.response.send_message(
@@ -436,12 +436,20 @@ class ConfigView(discord.ui.View):
             )
             return
         
-        # Clear all custom settings
-        delete_guild_setting(self.guild_id, "system_prompt")
-        delete_guild_setting(self.guild_id, "temperature")
-        delete_guild_setting(self.guild_id, "max_tokens")
-        delete_guild_setting(self.guild_id, "debug")
-        delete_guild_setting(self.guild_id, "debug_level")
+        # Clear all custom settings (including newly added ones)
+        settings_to_clear = [
+            "system_prompt",
+            "temperature", 
+            "max_tokens",
+            "debug",
+            "debug_level",
+            "search_enabled",
+            "tts_enabled",
+            "selected_voice"
+        ]
+        
+        for setting in settings_to_clear:
+            delete_guild_setting(self.guild_id, setting)
         
         self.update_toggle_buttons()
         embed = self.create_embed()
@@ -451,7 +459,7 @@ class ConfigView(discord.ui.View):
             "✅ All settings reset to defaults.",
             ephemeral=True
         )
-        logger.info(f"Settings reset to defaults for guild {self.guild_id}")
+        logger.info(f"All settings reset to defaults for guild {self.guild_id}")
 
 
 def setup_config_command(tree: app_commands.CommandTree):

@@ -6,7 +6,7 @@ import json
 import logging
 import os
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict
 
 from config.settings import STATS_FILE, MAX_HISTORY
@@ -22,6 +22,9 @@ context_loaded: Dict[int, bool] = defaultdict(bool)
 
 # Store statistics per channel/DM
 channel_stats: Dict[int, Dict] = {}
+
+# Inactivity threshold for cleanup (30 days)
+INACTIVITY_THRESHOLD_DAYS = 30
 
 
 def create_empty_stats() -> dict:
@@ -89,6 +92,35 @@ def deserialize_stats(data: dict) -> dict:
             ),
         }
     return out
+
+
+def cleanup_old_conversations() -> None:
+    """
+    Clean up conversation data for channels/users inactive for more than INACTIVITY_THRESHOLD_DAYS.
+    Removes old entries from conversation_histories, context_loaded, and channel_stats.
+    """
+    now = datetime.now()
+    threshold = timedelta(days=INACTIVITY_THRESHOLD_DAYS)
+    
+    # Find inactive conversations
+    inactive_ids = []
+    for conv_id, stats in channel_stats.items():
+        last_message = stats.get("last_message_time")
+        if last_message and (now - last_message) > threshold:
+            inactive_ids.append(conv_id)
+    
+    # Clean up
+    for conv_id in inactive_ids:
+        if conv_id in conversation_histories:
+            del conversation_histories[conv_id]
+        if conv_id in context_loaded:
+            del context_loaded[conv_id]
+        if conv_id in channel_stats:
+            del channel_stats[conv_id]
+    
+    if inactive_ids:
+        logger.info(f"Cleaned up {len(inactive_ids)} inactive conversations (inactive > {INACTIVITY_THRESHOLD_DAYS} days)")
+        save_stats()
 
 
 def load_stats() -> None:
@@ -170,7 +202,7 @@ def update_stats(
         response_tokens_cleaned: Cleaned response tokens (after removing thinking)
         response_time: Time taken for response in seconds
         failed: Whether the request failed
-        tool_used: Name of tool used (web_search, image_analysis, pdf_read, tts_voice)
+        tool_used: Name of tool used (web_search, url_fetch, image_analysis, pdf_read, tts_voice)
     """
     stats = get_or_create_stats(conversation_id)
     

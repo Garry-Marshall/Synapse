@@ -42,7 +42,7 @@ def setup_conversation_commands(tree: app_commands.CommandTree):
         history = get_conversation_history(conversation_id)
         msg_count = len(history)
         
-        from config import MAX_HISTORY
+        from config.settings import MAX_HISTORY
         await interaction.response.send_message(
             f"📊 This conversation has {msg_count} messages in its history (max: {MAX_HISTORY * 2}).",
             ephemeral=True

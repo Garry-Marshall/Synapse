@@ -59,4 +59,8 @@ def setup_help_command(tree: app_commands.CommandTree):
 ---
 """
         await interaction.response.send_message(help_text, ephemeral=True)
-        logger.info(f"Help command used by {interaction.user.name} in {interaction.guild.name if interaction.guild else 'DM'}")
+        
+        # Fixed: Safely handle guild name for logging
+        guild_name = interaction.guild.name if interaction.guild else 'DM'
+        user_name = interaction.user.name if interaction.user else 'Unknown'
+        logger.info(f"Help command used by {user_name} in {guild_name}")

@@ -13,8 +13,8 @@ from config.constants import DEFAULT_SYSTEM_PROMPT
 
 from utils.text_utils import estimate_tokens, remove_thinking_tags, is_inside_thinking_tags, split_message
 from utils.logging_config import log_effective_config, guild_debug_log
-from utils.guild_settings import guild_settings, is_tts_enabled_for_guild, get_guild_voice,get_guild_temperature, get_guild_max_tokens, is_search_enabled
-from utils.stats_manager import add_message_to_history, update_stats, is_context_loaded, set_context_loaded, get_conversation_history
+from utils.guild_settings import guild_settings, is_tts_enabled_for_guild, get_guild_voice, get_guild_temperature, get_guild_max_tokens, is_search_enabled
+from utils.stats_manager import add_message_to_history, update_stats, is_context_loaded, set_context_loaded, get_conversation_history, cleanup_old_conversations
 
 from services.lmstudio import build_api_messages, stream_completion
 from services.content_fetch import process_message_urls
@@ -23,13 +23,16 @@ from services.search import should_trigger_search, check_search_cooldown, get_we
 from services.tts import text_to_speech
 
 from commands.model import initialize_models, get_selected_model
-# Removed get_selected_voice import as we now use get_guild_voice from guild_settings
-from commands.voice import get_voice_client, voice_clients
+from commands.voice import get_voice_client, remove_voice_client
 
 from commands.__init__ import setup_all_commands
 
 
 logger = logging.getLogger(__name__)
+
+# Constants for rate limiting
+MAX_MESSAGE_EDITS_PER_WINDOW = 4  # Discord allows 5, use 4 to be safe
+MESSAGE_EDIT_WINDOW = 5.0  # seconds
 
 
 async def get_recent_context(channel, limit: int = CONTEXT_MESSAGES) -> list:
@@ -91,8 +94,16 @@ def setup_events(bot):
         logger.info(f'Listening in {len(CHANNEL_IDS)} channel(s): {CHANNEL_IDS}')
         logger.info(f'LMStudio URL: {LMSTUDIO_URL}')
         
-        # Fetch available models from LMStudio
-        await initialize_models()
+        # Fetch available models from LMStudio with validation
+        try:
+            models_loaded = await initialize_models()
+            if not models_loaded:
+                logger.error("⚠️ CRITICAL: No models loaded from LMStudio!")
+                logger.error("⚠️ The bot will not be able to respond to messages.")
+                logger.error("⚠️ Please ensure LMStudio is running with at least one model loaded.")
+        except Exception as e:
+            logger.error(f"⚠️ CRITICAL: Failed to initialize models: {e}", exc_info=True)
+            logger.error("⚠️ The bot may not function correctly.")
         
         # Log channel details
         for channel_id in CHANNEL_IDS:
@@ -115,6 +126,9 @@ def setup_events(bot):
         logger.info(f'CONTEXT_MESSAGES setting: {CONTEXT_MESSAGES}')
         logger.info(f'ALLOW_DMS setting: {ALLOW_DMS}')
         logger.info(f'ENABLE_TTS setting: {ENABLE_TTS}')
+        
+        # Clean up old conversations on startup
+        cleanup_old_conversations()
     
     
     @bot.event
@@ -154,12 +168,12 @@ def setup_events(bot):
         # Process attachments and track tool usage
         images, text_files_content = await process_all_attachments(message.attachments, message.channel)
         
-        # Track image analysis
+        # Track successful image analysis (only if images were actually processed)
         if images:
             for _ in images:
                 update_stats(conversation_id, tool_used="image_analysis")
         
-        # Track PDF reading (check if any text files were PDFs)
+        # Track successful PDF reading (check if any text files were PDFs)
         if text_files_content:
             for attachment in message.attachments:
                 if attachment.filename.lower().endswith('.pdf'):
@@ -176,6 +190,10 @@ def setup_events(bot):
         
         # Send "thinking" status
         status_msg = await message.channel.send("🤔 Thinking...")
+        
+        # Track message edits for rate limiting
+        edit_count = 0
+        edit_window_start = time.time()
         
         try:
             # Get guild_id for settings (None for DMs)
@@ -207,17 +225,20 @@ def setup_events(bot):
                     else:
                         logger.info(f"🔍 Triggering web search for: '{combined_message[:50]}...'")
                         web_context = await get_web_context(combined_message)
-                        update_search_cooldown(guild_id)
-                        web_search_triggered = True
-                        # Track web search usage
-                        update_stats(conversation_id, tool_used="web_search")
+                        
+                        # Only track successful searches
+                        if web_context:
+                            update_search_cooldown(guild_id)
+                            web_search_triggered = True
+                            update_stats(conversation_id, tool_used="web_search")
+                        else:
+                            logger.warning("Web search returned no results")
             
             # Only check for URLs in the ORIGINAL user message if web search wasn't triggered
-            # This prevents web search results from triggering URL fetching
             url_context = ""
             if not web_search_triggered:
                 url_context = await process_message_urls(combined_message)
-                # Only track URL fetch if URLs were actually found and processed
+                # Only track successful URL fetches
                 if url_context:
                     update_stats(conversation_id, tool_used="url_fetch")
                      
@@ -234,10 +255,17 @@ def setup_events(bot):
                     "to answer. If the answer is found in the context, cite the source if possible."
                 )
                 
-                # Truncate if too long
+                # Truncate if too long (by logical boundaries)
                 if len(final_system_prompt) > 60000:
                     logger.warning(f"⚠️ Total system context too large ({len(final_system_prompt)}). Truncating to 60k.")
-                    final_system_prompt = final_system_prompt[:60000] + "\n[System: Context truncated due to length limits]"
+                    # Try to truncate at paragraph boundary
+                    truncated = final_system_prompt[:59900]
+                    last_paragraph = truncated.rfind('\n\n')
+                    if last_paragraph > 50000:  # Only use paragraph boundary if reasonable
+                        final_system_prompt = truncated[:last_paragraph]
+                    else:
+                        final_system_prompt = truncated
+                    final_system_prompt += "\n\n[System: Context truncated due to length limits]"
             
             # Debug logging
             if web_context:
@@ -273,7 +301,7 @@ def setup_events(bot):
             api_messages = build_api_messages(get_conversation_history(conversation_id), final_system_prompt)
             
             # Get model and settings using persistence getters
-            model_to_use = get_selected_model(guild_id) if guild_id else "local-model"
+            model_to_use = get_selected_model(guild_id)
             temperature = get_guild_temperature(guild_id)
             max_tokens = get_guild_max_tokens(guild_id)
             
@@ -284,13 +312,20 @@ def setup_events(bot):
             start_time = time.time()
             response_text = ""
             last_update = time.time()
-            update_interval = 1.0
+            update_interval = 1.5  # Increased from 1.0 to reduce rate limit risk
             
             async for chunk in stream_completion(api_messages, model_to_use, temperature, max_tokens):
                 response_text += chunk
                 
                 current_time = time.time()
-                if current_time - last_update >= update_interval:
+                
+                # Reset edit counter if we're in a new window
+                if current_time - edit_window_start >= MESSAGE_EDIT_WINDOW:
+                    edit_count = 0
+                    edit_window_start = current_time
+                
+                # Only update if enough time passed AND we haven't hit rate limit
+                if current_time - last_update >= update_interval and edit_count < MAX_MESSAGE_EDITS_PER_WINDOW:
                     display_text = remove_thinking_tags(response_text)
                     
                     if not is_inside_thinking_tags(response_text):
@@ -300,13 +335,18 @@ def setup_events(bot):
                             try:
                                 await status_msg.edit(content=display_text if display_text else "🤔 Thinking...")
                                 last_update = current_time
-                            except discord.errors.HTTPException:
+                                edit_count += 1
+                            except discord.errors.HTTPException as e:
+                                logger.warning(f"Failed to edit message (likely rate limit): {e}")
+                                # Don't count failed edits
                                 pass
                     else:
                         try:
                             await status_msg.edit(content="🤔 Thinking...")
                             last_update = current_time
-                        except discord.errors.HTTPException:
+                            edit_count += 1
+                        except discord.errors.HTTPException as e:
+                            logger.warning(f"Failed to edit message (likely rate limit): {e}")
                             pass
             
             # Process final response
@@ -365,12 +405,12 @@ def setup_events(bot):
                             voice_client = get_voice_client(guild_id)
                             if voice_client and voice_client.is_connected() and not voice_client.is_playing():
                                 try:
-                                    # Use the new persistent getter for voice selection
+                                    # Use the persistent getter for voice selection
                                     guild_voice = get_guild_voice(guild_id)
                                     audio_data = await text_to_speech(final_response, guild_voice)
                                     
                                     if audio_data:
-                                        # Track TTS usage
+                                        # Track successful TTS usage
                                         update_stats(conversation_id, tool_used="tts_voice")
                                         
                                         # Unique filename to prevent access errors
@@ -380,23 +420,35 @@ def setup_events(bot):
                                             f.write(audio_data)
                                         
                                         def _safe_remove(path: str):
-                                            try:
-                                                if os.path.exists(path):
-                                                    os.remove(path)
-                                            except Exception:
-                                                pass
+                                            max_attempts = 10
+                                            for attempt in range(max_attempts):
+                                                try:
+                                                    if os.path.exists(path):
+                                                        os.remove(path)
+                                                        logger.debug(f"Cleaned up TTS file: {path}")
+                                                        return
+                                                except PermissionError:
+                                                    if attempt < max_attempts - 1:
+                                                        time.sleep(0.5)  # Wait before retry
+                                                    else:
+                                                        logger.warning(f"Could not delete TTS file {path} after {max_attempts} attempts")
+                                                except Exception as e:
+                                                    logger.error(f"Error deleting TTS file {path}: {e}")
+                                                    return
 
                                         def cleanup(error):
-                                            # Schedule file removal on a background timer
+                                            if error:
+                                                logger.error(f"Error during TTS playback: {error}")
+                                            # Schedule file removal on a background timer with longer delay
                                             try:
-                                                threading.Timer(0.1, _safe_remove, args=(temp_audio,)).start()
-                                            except Exception:
-                                                pass
+                                                threading.Timer(2.0, _safe_remove, args=(temp_audio,)).start()
+                                            except Exception as e:
+                                                logger.error(f"Error scheduling TTS cleanup: {e}")
 
                                         voice_client.play(discord.FFmpegPCMAudio(temp_audio), after=cleanup)
                                         logger.info(f"Playing TTS audio for guild {guild_id} with voice {guild_voice}")
                                 except Exception as e:
-                                    logger.error(f"Error playing TTS: {e}")
+                                    logger.error(f"Error playing TTS: {e}", exc_info=True)
                 else:
                     await status_msg.edit(content="_[Response contained only thinking process]_")
             else:
@@ -407,8 +459,10 @@ def setup_events(bot):
             logger.error(f"Error in on_message: {e}", exc_info=True)
             try:
                 await status_msg.edit(content="An error occurred while processing your message.")
-            except:
-                pass
+            except discord.errors.HTTPException as edit_error:
+                logger.error(f"Failed to edit error message: {edit_error}")
+            except Exception as edit_error:
+                logger.error(f"Unexpected error editing status message: {edit_error}")
             update_stats(conversation_id, failed=True)
     
     
@@ -430,6 +484,5 @@ def setup_events(bot):
             if len(non_bot_members) == 0:
                 logger.info(f"Bot left alone in VC {voice_client.channel.id}. Disconnecting...")
                 await voice_client.disconnect()
-                # Clean up from voice_clients dict
-                if member.guild.id in voice_clients:
-                    del voice_clients[member.guild.id]
+                # Clean up using the proper function
+                remove_voice_client(member.guild.id)

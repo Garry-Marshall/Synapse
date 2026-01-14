@@ -4,7 +4,7 @@ Exports all utility functions and managers for easy importing.
 """
 
 # Logging utilities
-from .logging_config import (
+from utils.logging_config import (
     setup_logging,
     log_effective_config,
     guild_debug_log,
@@ -13,7 +13,7 @@ from .logging_config import (
 )
 
 # Text processing utilities
-from .text_utils import (
+from utils.text_utils import (
     estimate_tokens,
     remove_thinking_tags,
     is_inside_thinking_tags,
@@ -24,7 +24,7 @@ from .text_utils import (
 )
 
 # Statistics management
-from .stats_manager import (
+from utils.stats_manager import (
     conversation_histories,
     context_loaded,
     channel_stats,
@@ -43,7 +43,7 @@ from .stats_manager import (
 )
 
 # Guild settings management
-from .guild_settings import (
+from utils.guild_settings import (
     load_guild_settings,
     save_guild_settings,
     get_guild_setting,
@@ -56,6 +56,7 @@ from .guild_settings import (
     get_all_guild_settings,
     clear_guild_settings,
 )
+
 
 __all__ = [
     # Logging

@@ -79,7 +79,7 @@ def get_voice_description(voice: str) -> str:
     Returns:
         Description string
     """
-    from config import VOICE_DESCRIPTIONS
+    from config.constants import VOICE_DESCRIPTIONS
     return VOICE_DESCRIPTIONS.get(voice, "Unknown voice")
 
 

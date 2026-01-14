@@ -3,7 +3,7 @@ Config package initialization.
 Exports all settings and constants for easy importing.
 """
 
-from .settings import (
+from config.settings import (
     # Discord
     DISCORD_TOKEN,
     CHANNEL_IDS,
@@ -44,7 +44,7 @@ from .settings import (
     SEARCH_COOLDOWN,
 )
 
-from .constants import (
+from config.constants import (
     # TTS
     AVAILABLE_VOICES,
     VOICE_DESCRIPTIONS,

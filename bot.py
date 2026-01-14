@@ -6,7 +6,9 @@ import logging
 
 from config.settings import DISCORD_TOKEN, CHANNEL_IDS
 from utils.logging_config import setup_logging
-from core import bot, setup_events
+from core.events import setup_events
+from core.bot_instance import bot
+
 
 # Setup logging first
 log_filename = setup_logging()
