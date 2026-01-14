@@ -19,7 +19,8 @@ from utils.guild_settings import (
 )
 from utils.stats_manager import (
     get_conversation_history,
-    clear_conversation_history
+    clear_conversation_history,
+    reset_stats
 )
 
 logger = logging.getLogger(__name__)
@@ -427,6 +428,23 @@ class ConfigView(discord.ui.View):
             ephemeral=True
         )
         logger.info(f"Cleared all conversation history in channel {interaction.channel_id}")
+    
+    @discord.ui.button(label="Reset Stats", style=discord.ButtonStyle.danger, emoji="📈", row=3)
+    async def reset_stats_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_guild_admin(interaction):
+            await interaction.response.send_message(
+                "❌ Only admins can reset stats.", ephemeral=True
+            )
+            return
+        
+        conversation_id = interaction.channel_id
+        reset_stats(conversation_id)
+        
+        await interaction.response.send_message(
+            "📈 Conversation statistics have been reset.",
+            ephemeral=True
+        )
+        logger.info(f"Stats reset for channel {conversation_id}")
     
     @discord.ui.button(label="Reset to Defaults", style=discord.ButtonStyle.danger, emoji="🔄", row=3)
     async def reset_all(self, interaction: discord.Interaction, button: discord.ui.Button):

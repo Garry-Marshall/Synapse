@@ -7,11 +7,8 @@ from discord import app_commands
 import logging
 
 from config.settings import ALLOW_DMS
-from utils.stats_manager import (
-    get_or_create_stats,
-    get_stats_summary,
-    reset_stats
-)
+from utils.stats_manager import get_or_create_stats, get_stats_summary
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,25 +41,4 @@ def setup_stats_commands(tree: app_commands.CommandTree):
         
         await interaction.response.send_message(stats_message, ephemeral=True)
         logger.info(f"Stats displayed for conversation {conversation_id}")
-    
-    
-    @tree.command(name="stats_reset", description="Reset conversation statistics for this channel")
-    async def reset_stats_command(interaction: discord.Interaction):
-        """Slash command to reset statistics for a conversation."""
-        conversation_id = interaction.channel_id if interaction.guild else interaction.user.id
-
-        if not interaction.guild and not ALLOW_DMS:
-            await interaction.response.send_message(
-                "❌ DM conversations are not enabled.",
-                ephemeral=True
-            )
-            return
-
-        # Reset the stats
-        reset_stats(conversation_id)
-
-        await interaction.response.send_message(
-            "📊 Conversation statistics have been reset.",
-            ephemeral=True
-        )
-        logger.info(f"Stats reset for conversation {conversation_id}")
+       
