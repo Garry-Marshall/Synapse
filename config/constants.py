@@ -97,3 +97,6 @@ DEFAULT_MAX_TOKENS = -1
 
 # Default model identifier
 DEFAULT_MODEL = "local-model"
+
+# Maximum number of response times to keep in memory
+MAX_RESPONSE_TIMES = 100

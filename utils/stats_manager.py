@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Dict
 
 from config.settings import STATS_FILE, MAX_HISTORY
-
+from config.constants import MAX_RESPONSE_TIMES
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +169,9 @@ def update_stats(
         
         if response_time is not None:
             stats["response_times"].append(response_time)
+            # Keep only last MAX_RESPONSE_TIMES entries to prevent unbounded growth
+            if len(stats["response_times"]) > MAX_RESPONSE_TIMES:
+                stats["response_times"] = stats["response_times"][-MAX_RESPONSE_TIMES:]
         
         stats["last_message_time"] = datetime.now()
     
