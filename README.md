@@ -146,7 +146,7 @@ Expected output:<br>
 
 `2026-01-13 10:00:00 [INFO] Bot has connected to Discord!`<br>
 `2026-01-13 10:00:00 [INFO] Loaded LM Studio model(s): ['llama-2-7b']`<br>
-`2026-01-13 10:00:00 [INFO] Synced 10 slash command(s)`<br>
+`2026-01-13 10:00:00 [INFO] Synced 7 slash command(s)`<br>
 `✅ Success! Your bot is now online.`<br>
 </details> <br>
 <hr>
@@ -294,7 +294,7 @@ touch core/__init__.py
 1.	Refresh Discord – Press CTRL-R in Discord.
 2.	Wait 1 hour - Discord caches slash commands globally
 3.	Check logs for sync errors: 
-4.	[INFO] Synced 10 slash command(s)
+4.	[INFO] Synced 7 slash command(s)
 5.	Test in DM - Slash commands appear faster in DMs
 </pre>
 </details>
