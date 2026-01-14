@@ -13,7 +13,7 @@ from config.constants import DEFAULT_SYSTEM_PROMPT, MAX_MESSAGE_EDITS_PER_WINDOW
 
 from utils.text_utils import estimate_tokens, remove_thinking_tags, is_inside_thinking_tags, split_message
 from utils.logging_config import log_effective_config, guild_debug_log
-from utils.settings_manager import guild_settings, is_tts_enabled_for_guild, get_guild_voice, get_guild_temperature, get_guild_max_tokens, is_search_enabled
+from utils.settings_manager import get_guild_setting, is_tts_enabled_for_guild, get_guild_voice, get_guild_temperature, get_guild_max_tokens, is_search_enabled
 from utils.stats_manager import add_message_to_history, update_stats, is_context_loaded, set_context_loaded, get_conversation_history, cleanup_old_conversations
 
 from services.lmstudio import build_api_messages, stream_completion
@@ -25,7 +25,7 @@ from services.tts import text_to_speech
 from commands.model import initialize_models, get_selected_model
 from commands.voice import get_voice_client, remove_voice_client
 
-from commands.__init__ import setup_all_commands
+from commands import setup_all_commands
 
 
 logger = logging.getLogger(__name__)
@@ -47,8 +47,6 @@ async def get_recent_context(channel, limit: int = CONTEXT_MESSAGES) -> list:
         async for msg in channel.history(limit=limit * 3):
             if IGNORE_BOTS and msg.author.bot:
                 continue
-            # For DMs, the channel won't have a guild attribute, so only the
-            # IGNORE_BOTS check above applies there.
             if hasattr(channel, 'guild') and channel.guild is not None:
                 if msg.author == channel.guild.me:
                     continue
@@ -66,6 +64,33 @@ async def get_recent_context(channel, limit: int = CONTEXT_MESSAGES) -> list:
     except Exception as e:
         logger.error(f"Error fetching message history: {e}")
         return []
+
+
+async def update_status(status_msg, content: str, edit_tracker: dict):
+    """
+    Update status message with rate limit protection.
+    
+    Args:
+        status_msg: Discord message to edit
+        content: New content
+        edit_tracker: Dict tracking edits (count, window_start, last_update)
+    """
+    current_time = time.time()
+    
+    # Reset edit counter if we're in a new window
+    if current_time - edit_tracker['window_start'] >= MESSAGE_EDIT_WINDOW:
+        edit_tracker['count'] = 0
+        edit_tracker['window_start'] = current_time
+    
+    # Check if enough time passed and we haven't hit rate limit
+    if (current_time - edit_tracker['last_update'] >= 1.5 and 
+        edit_tracker['count'] < MAX_MESSAGE_EDITS_PER_WINDOW):
+        try:
+            await status_msg.edit(content=content)
+            edit_tracker['last_update'] = current_time
+            edit_tracker['count'] += 1
+        except discord.errors.HTTPException as e:
+            logger.warning(f"Failed to edit message: {e}")
 
 
 def setup_events(bot):
@@ -125,9 +150,10 @@ def setup_events(bot):
         
         # Clean up old conversations on startup
         cleanup_old_conversations()
-
-        # Clean up old search cooldowns (NEW!)
+        
+        # Clean up old search cooldowns
         cleanup_old_cooldowns()
+    
     
     @bot.event
     async def on_message(message):
@@ -163,42 +189,50 @@ def setup_events(bot):
         if not message.content.strip() and not message.attachments:
             return
         
-        # Process attachments and track tool usage
-        images, text_files_content = await process_all_attachments(message.attachments, message.channel)
-        
-        # Track successful image analysis (only if images were actually processed)
-        if images:
-            for _ in images:
-                update_stats(conversation_id, tool_used="image_analysis")
-        
-        # Track successful PDF reading (check if any text files were PDFs)
-        if text_files_content:
-            for attachment in message.attachments:
-                if attachment.filename.lower().endswith('.pdf'):
-                    update_stats(conversation_id, tool_used="pdf_read")
-        
-        # Check if we have any content to process
-        if not message.content.strip() and not images and not text_files_content:
-            return
-        
-        # Combine message with file content
-        combined_message = message.content
-        if text_files_content:
-            combined_message = f"{message.content}\n{text_files_content}" if message.content.strip() else text_files_content
-        
-        # Send "thinking" status
+        # Send initial "thinking" status
         status_msg = await message.channel.send("🤔 Thinking...")
         
         # Track message edits for rate limiting
-        edit_count = 0
-        edit_window_start = time.time()
+        edit_tracker = {
+            'count': 0,
+            'window_start': time.time(),
+            'last_update': time.time()
+        }
         
         try:
             # Get guild_id for settings (None for DMs)
             guild_id = message.guild.id if not is_dm else None
             
+            # Process attachments and track tool usage
+            if message.attachments:
+                await update_status(status_msg, "📎 Processing attachments...", edit_tracker)
+            
+            images, text_files_content = await process_all_attachments(message.attachments, message.channel)
+            
+            # Track successful image analysis
+            if images:
+                for _ in images:
+                    update_stats(conversation_id, tool_used="image_analysis")
+            
+            # Track successful PDF reading
+            if text_files_content:
+                for attachment in message.attachments:
+                    if attachment.filename.lower().endswith('.pdf'):
+                        update_stats(conversation_id, tool_used="pdf_read")
+            
+            # Check if we have any content to process
+            if not message.content.strip() and not images and not text_files_content:
+                await status_msg.delete()
+                return
+            
+            # Combine message with file content
+            combined_message = message.content
+            if text_files_content:
+                combined_message = f"{message.content}\n{text_files_content}" if message.content.strip() else text_files_content
+            
             # Load initial context if needed
             if len(get_conversation_history(conversation_id)) == 0 and not is_context_loaded(conversation_id) and CONTEXT_MESSAGES > 0:
+                await update_status(status_msg, "📚 Loading conversation context...", edit_tracker)
                 recent_context = await get_recent_context(message.channel, CONTEXT_MESSAGES)
                 for ctx_msg in recent_context:
                     add_message_to_history(conversation_id, ctx_msg["role"], ctx_msg["content"])
@@ -206,10 +240,10 @@ def setup_events(bot):
                 logger.info(f"Loaded {len(recent_context)} context messages")
             
             # Build the system prompt with web search and URL context
-            base_system_prompt = guild_settings.get(guild_id, {}).get("system_prompt", DEFAULT_SYSTEM_PROMPT)
+            base_system_prompt = get_guild_setting(guild_id, "system_prompt", DEFAULT_SYSTEM_PROMPT)
             final_system_prompt = base_system_prompt
             
-            # Check for web search FIRST (before URL processing)
+            # Check for web search FIRST
             web_context = ""
             web_search_triggered = False
             if should_trigger_search(combined_message):
@@ -221,10 +255,10 @@ def setup_events(bot):
                             delete_after=10
                         )
                     else:
+                        await update_status(status_msg, "🔍 Searching the web...", edit_tracker)
                         logger.info(f"🔍 Triggering web search for: '{combined_message[:50]}...'")
                         web_context = await get_web_context(combined_message)
                         
-                        # Only track successful searches
                         if web_context:
                             update_search_cooldown(guild_id)
                             web_search_triggered = True
@@ -232,16 +266,20 @@ def setup_events(bot):
                         else:
                             logger.warning("Web search returned no results")
             
-            # Only check for URLs in the ORIGINAL user message if web search wasn't triggered
+            # Only check for URLs if web search wasn't triggered
             url_context = ""
             if not web_search_triggered:
+                if any(url in combined_message for url in ['http://', 'https://']):
+                    await update_status(status_msg, "🌐 Fetching URL content...", edit_tracker)
+                
                 url_context = await process_message_urls(combined_message)
-                # Only track successful URL fetches
                 if url_context:
                     update_stats(conversation_id, tool_used="url_fetch")
-                     
+            
             # Add contexts to system prompt
             if web_context or url_context:
+                await update_status(status_msg, "🧠 Building context...", edit_tracker)
+                
                 final_system_prompt += "\n\nADDITIONAL CONTEXT FOR THIS REQUEST:"
                 if web_context:
                     final_system_prompt += f"\n[Web Search Results]:\n{web_context}"
@@ -253,41 +291,18 @@ def setup_events(bot):
                     "to answer. If the answer is found in the context, cite the source if possible."
                 )
                 
-                # Truncate if too long (by logical boundaries)
+                # Truncate if too long
                 if len(final_system_prompt) > 60000:
                     logger.warning(f"⚠️ Total system context too large ({len(final_system_prompt)}). Truncating to 60k.")
-                    # Try to truncate at paragraph boundary
                     truncated = final_system_prompt[:59900]
                     last_paragraph = truncated.rfind('\n\n')
-                    if last_paragraph > 50000:  # Only use paragraph boundary if reasonable
+                    if last_paragraph > 50000:
                         final_system_prompt = truncated[:last_paragraph]
                     else:
                         final_system_prompt = truncated
                     final_system_prompt += "\n\n[System: Context truncated due to length limits]"
             
-            # Debug logging
-            if web_context:
-                guild_debug_log(
-                    guild_id,
-                    "debug",
-                    "Web search context added | chars=%d | est_tokens=%d",
-                    len(web_context),
-                    estimate_tokens(web_context),
-                    guild_settings=guild_settings
-                )
-            
-            if url_context:
-                guild_debug_log(
-                    guild_id,
-                    "debug",
-                    "URL context added | chars=%d | est_tokens=%d",
-                    len(url_context),
-                    estimate_tokens(url_context),
-                    guild_settings=guild_settings
-                )
-            
             # Prepare user message content
-            username = message.author.display_name
             current_content = combined_message
             if images and len(images) > 0:
                 current_content = [{"type": "text", "text": combined_message or "What's in this image?"}] + images
@@ -298,7 +313,7 @@ def setup_events(bot):
             # Build API messages
             api_messages = build_api_messages(get_conversation_history(conversation_id), final_system_prompt)
             
-            # Get model and settings using persistence getters
+            # Get model and settings
             model_to_use = get_selected_model(guild_id)
             temperature = get_guild_temperature(guild_id)
             max_tokens = get_guild_max_tokens(guild_id)
@@ -307,10 +322,11 @@ def setup_events(bot):
             estimated_prompt_tokens = estimate_tokens(str(api_messages))
             
             # Stream the response
+            await update_status(status_msg, "✍️ Writing response...", edit_tracker)
+            
             start_time = time.time()
             response_text = ""
-            last_update = time.time()
-            update_interval = 1.5  # Increased from 1.0 to reduce rate limit risk
+            update_interval = 1.5
             
             async for chunk in stream_completion(api_messages, model_to_use, temperature, max_tokens):
                 response_text += chunk
@@ -318,12 +334,12 @@ def setup_events(bot):
                 current_time = time.time()
                 
                 # Reset edit counter if we're in a new window
-                if current_time - edit_window_start >= MESSAGE_EDIT_WINDOW:
-                    edit_count = 0
-                    edit_window_start = current_time
+                if current_time - edit_tracker['window_start'] >= MESSAGE_EDIT_WINDOW:
+                    edit_tracker['count'] = 0
+                    edit_tracker['window_start'] = current_time
                 
                 # Only update if enough time passed AND we haven't hit rate limit
-                if current_time - last_update >= update_interval and edit_count < MAX_MESSAGE_EDITS_PER_WINDOW:
+                if current_time - edit_tracker['last_update'] >= update_interval and edit_tracker['count'] < MAX_MESSAGE_EDITS_PER_WINDOW:
                     display_text = remove_thinking_tags(response_text)
                     
                     if not is_inside_thinking_tags(response_text):
@@ -331,35 +347,21 @@ def setup_events(bot):
                         
                         if display_text.strip():
                             try:
-                                await status_msg.edit(content=display_text if display_text else "🤔 Thinking...")
-                                last_update = current_time
-                                edit_count += 1
+                                await status_msg.edit(content=display_text if display_text else "✍️ Writing response...")
+                                edit_tracker['last_update'] = current_time
+                                edit_tracker['count'] += 1
                             except discord.errors.HTTPException as e:
-                                logger.warning(f"Failed to edit message (likely rate limit): {e}")
-                                # Don't count failed edits
-                                pass
+                                logger.warning(f"Failed to edit message: {e}")
                     else:
                         try:
-                            await status_msg.edit(content="🤔 Thinking...")
-                            last_update = current_time
-                            edit_count += 1
+                            await status_msg.edit(content="✍️ Writing response...")
+                            edit_tracker['last_update'] = current_time
+                            edit_tracker['count'] += 1
                         except discord.errors.HTTPException as e:
-                            logger.warning(f"Failed to edit message (likely rate limit): {e}")
-                            pass
+                            logger.warning(f"Failed to edit message: {e}")
             
             # Process final response
             if response_text:
-                # Log full raw response (with thinking tags)
-                guild_debug_log(
-                    guild_id,
-                    "debug",
-                    "Full raw response (with thinking) | convo=%s:\n%s",
-                    conversation_id,
-                    response_text,
-                    guild_settings=guild_settings
-                )
-                
-                # Add to conversation history
                 add_message_to_history(conversation_id, "assistant", response_text)
                 
                 # Calculate stats
@@ -398,20 +400,16 @@ def setup_events(bot):
                     
                     # TTS in voice channel if enabled
                     if ENABLE_TTS and not is_dm and guild_id:
-                        # Check per-guild TTS setting
                         if is_tts_enabled_for_guild(guild_id):
                             voice_client = get_voice_client(guild_id)
                             if voice_client and voice_client.is_connected() and not voice_client.is_playing():
                                 try:
-                                    # Use the persistent getter for voice selection
                                     guild_voice = get_guild_voice(guild_id)
                                     audio_data = await text_to_speech(final_response, guild_voice)
                                     
                                     if audio_data:
-                                        # Track successful TTS usage
                                         update_stats(conversation_id, tool_used="tts_voice")
                                         
-                                        # Unique filename to prevent access errors
                                         ts = int(time.time())
                                         temp_audio = f"temp_tts_{guild_id}_{ts}.mp3"
                                         with open(temp_audio, 'wb') as f:
@@ -427,7 +425,7 @@ def setup_events(bot):
                                                         return
                                                 except PermissionError:
                                                     if attempt < max_attempts - 1:
-                                                        time.sleep(0.5)  # Wait before retry
+                                                        time.sleep(0.5)
                                                     else:
                                                         logger.warning(f"Could not delete TTS file {path} after {max_attempts} attempts")
                                                 except Exception as e:
@@ -437,7 +435,6 @@ def setup_events(bot):
                                         def cleanup(error):
                                             if error:
                                                 logger.error(f"Error during TTS playback: {error}")
-                                            # Schedule file removal on a background timer with longer delay
                                             try:
                                                 threading.Timer(2.0, _safe_remove, args=(temp_audio,)).start()
                                             except Exception as e:
@@ -467,20 +464,15 @@ def setup_events(bot):
     @bot.event
     async def on_voice_state_update(member, before, after):
         """Event listener to auto-leave when the bot is left alone in a VC."""
-        # Find the voice client for this guild
         voice_client = member.guild.voice_client
         
-        # If the bot isn't in a voice channel, we don't need to do anything
         if not voice_client:
             return
 
-        # Check if the channel that was updated is the one the bot is in
         if before.channel is not None and before.channel.id == voice_client.channel.id:
-            # Count the members left (excluding bots)
             non_bot_members = [m for m in voice_client.channel.members if not m.bot]
             
             if len(non_bot_members) == 0:
                 logger.info(f"Bot left alone in VC {voice_client.channel.id}. Disconnecting...")
                 await voice_client.disconnect()
-                # Clean up using the proper function
                 remove_voice_client(member.guild.id)
