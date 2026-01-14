@@ -40,6 +40,7 @@ SEARCH_TRIGGERS = [
     "temperature in",
     "today's",
     "who is the current", 
+    "who's the current",
     "recent", 
     "breaking news"
 ]

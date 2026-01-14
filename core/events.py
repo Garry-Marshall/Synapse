@@ -193,8 +193,9 @@ def setup_events(bot):
             base_system_prompt = guild_settings.get(guild_id, {}).get("system_prompt", DEFAULT_SYSTEM_PROMPT)
             final_system_prompt = base_system_prompt
             
-            # Check for web search
+            # Check for web search FIRST (before URL processing)
             web_context = ""
+            web_search_triggered = False
             if should_trigger_search(combined_message):
                 if is_search_enabled(guild_id):
                     cooldown = check_search_cooldown(guild_id)
@@ -207,13 +208,18 @@ def setup_events(bot):
                         logger.info(f"🔍 Triggering web search for: '{combined_message[:50]}...'")
                         web_context = await get_web_context(combined_message)
                         update_search_cooldown(guild_id)
+                        web_search_triggered = True
                         # Track web search usage
                         update_stats(conversation_id, tool_used="web_search")
             
-            # Check for URLs in message
-            url_context = await process_message_urls(combined_message)
-            # Track web search usage
-            update_stats(conversation_id, tool_used="url_fetch")   
+            # Only check for URLs in the ORIGINAL user message if web search wasn't triggered
+            # This prevents web search results from triggering URL fetching
+            url_context = ""
+            if not web_search_triggered:
+                url_context = await process_message_urls(combined_message)
+                # Only track URL fetch if URLs were actually found and processed
+                if url_context:
+                    update_stats(conversation_id, tool_used="url_fetch")
                      
             # Add contexts to system prompt
             if web_context or url_context:
@@ -241,6 +247,16 @@ def setup_events(bot):
                     "Web search context added | chars=%d | est_tokens=%d",
                     len(web_context),
                     estimate_tokens(web_context),
+                    guild_settings=guild_settings
+                )
+            
+            if url_context:
+                guild_debug_log(
+                    guild_id,
+                    "debug",
+                    "URL context added | chars=%d | est_tokens=%d",
+                    len(url_context),
+                    estimate_tokens(url_context),
                     guild_settings=guild_settings
                 )
             
