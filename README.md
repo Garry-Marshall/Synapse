@@ -172,10 +172,10 @@ Bot: This document discusses quarterly sales performance,<br>
 <pre>
 <b>Command           Description</b>
 
-<b>/reset</b>            Clear conversation history
-<b>/history</b>          Show conversation length
+<b>/reset</b>            Clear conversation history and stats
+<b>/history</b>          Show conversation length in memory
 <b>/stats</b>            Display detailed statistics
-<b>/stats_reset</b>      Reset statisticst
+<b>/stats_reset</b>      Reset statistics
 </pre>
 
 <h4>⚙️ Configuration</h4>
