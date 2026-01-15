@@ -34,6 +34,7 @@ This my personal Discord bot, but feel free to play with it as you see fit.
 &nbsp;&nbsp;&nbsp;&nbsp;•	✅ History Management - Clear, reset, or view conversation history<br>
 &nbsp;&nbsp;&nbsp;&nbsp;•	✅ Persistent Storage - Stats and settings saved across restarts<br>
 &nbsp;&nbsp;&nbsp;&nbsp;•	✅ Context Analysis - Shows estimated token usage in rolling context window<br>
+&nbsp;&nbsp;&nbsp;&nbsp;•	✅ Health Check - Shows the Bot's Status and Services' Health<br>
 <br><hr><br>
 <pre>
 📁 Project Structure<br>
@@ -176,6 +177,7 @@ Bot: This document discusses quarterly sales performance,<br>
 
 <b>/stats</b>            Display detailed statistics
 <b>/context</b>          Shows estimated token usage
+<b>/status</b>           Shows Status and Health Checks
 </pre>
 
 <h4>⚙️ Configuration</h4>
