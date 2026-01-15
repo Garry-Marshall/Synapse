@@ -33,7 +33,8 @@ def setup_help_command(tree: app_commands.CommandTree):
 • `/config` — Opens the config dialog box
 ---
 ### 🧠 Conversation Management
-• `/stats` — Display detailed conversation statistics  
+• `/stats` — Display detailed conversation statistics
+• `/context` — Show context window usage and token limits  
 ---
 ### 🤖 Model Management
 • `/model` — Select the active AI model for this server  
@@ -51,6 +52,7 @@ def setup_help_command(tree: app_commands.CommandTree):
 • Temperature and max_tokens affect response style and length  
 • The bot automatically searches the web when needed  
 • Supported file types: images (PNG, JPG, GIF, WebP), PDFs, and text files  
+• Use `/context` to monitor your context window usage and avoid hitting limits
 
 ---
 """

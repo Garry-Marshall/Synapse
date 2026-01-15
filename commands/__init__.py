@@ -9,6 +9,7 @@ from commands.model import setup_model_command, selected_models, available_model
 from commands.config_cmd import setup_config_command
 from commands.help import setup_help_command
 from commands.status import setup_status_command
+from commands.context_cmd import setup_context_command
 
 
 def setup_all_commands(tree):
@@ -24,6 +25,7 @@ def setup_all_commands(tree):
     setup_config_command(tree)
     setup_help_command(tree)
     setup_status_command(tree)
+    setup_context_command(tree)
 
 
 __all__ = [
@@ -35,6 +37,7 @@ __all__ = [
     'setup_config_command',
     'setup_help_command',
     'setup_status_command',
+    'setup_context_command',
     
     # Voice data
     'voice_clients',
