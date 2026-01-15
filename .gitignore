@@ -45,6 +45,7 @@ venv.bak/
 # Bot data files
 channel_stats.json
 guild_settings.json
+*.db
 
 # Logs directory
 Logs/
