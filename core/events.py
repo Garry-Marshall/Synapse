@@ -9,7 +9,23 @@ import os
 import threading
 
 from config.settings import CHANNEL_IDS, ALLOW_DMS, IGNORE_BOTS, CONTEXT_MESSAGES, ENABLE_TTS, LMSTUDIO_URL
-from config.constants import DEFAULT_SYSTEM_PROMPT, MAX_MESSAGE_EDITS_PER_WINDOW, MESSAGE_EDIT_WINDOW
+from config.constants import (
+    DEFAULT_SYSTEM_PROMPT, 
+    MAX_MESSAGE_EDITS_PER_WINDOW, 
+    MESSAGE_EDIT_WINDOW,
+    STREAM_UPDATE_INTERVAL,
+    DISCORD_SAFE_DISPLAY_LIMIT,
+    MAX_SYSTEM_PROMPT_CONTEXT,
+    SYSTEM_PROMPT_TRUNCATE_TO,
+    SYSTEM_PROMPT_SAFE_TRUNCATE,
+    MSG_THINKING,
+    MSG_PROCESSING_ATTACHMENTS,
+    MSG_LOADING_CONTEXT,
+    MSG_SEARCHING_WEB,
+    MSG_FETCHING_URL,
+    MSG_BUILDING_CONTEXT,
+    MSG_WRITING_RESPONSE,
+)
 
 from utils.text_utils import estimate_tokens, remove_thinking_tags, is_inside_thinking_tags, split_message
 from utils.logging_config import log_effective_config, guild_debug_log
@@ -83,7 +99,7 @@ async def update_status(status_msg, content: str, edit_tracker: dict):
         edit_tracker['window_start'] = current_time
     
     # Check if enough time passed and we haven't hit rate limit
-    if (current_time - edit_tracker['last_update'] >= 1.5 and 
+    if (current_time - edit_tracker['last_update'] >= STREAM_UPDATE_INTERVAL and 
         edit_tracker['count'] < MAX_MESSAGE_EDITS_PER_WINDOW):
         try:
             await status_msg.edit(content=content)
@@ -119,12 +135,12 @@ def setup_events(bot):
         try:
             models_loaded = await initialize_models()
             if not models_loaded:
-                logger.error("⚠️ CRITICAL: No models loaded from LMStudio!")
-                logger.error("⚠️ The bot will not be able to respond to messages.")
-                logger.error("⚠️ Please ensure LMStudio is running with at least one model loaded.")
+                logger.error("âš ï¸ CRITICAL: No models loaded from LMStudio!")
+                logger.error("âš ï¸ The bot will not be able to respond to messages.")
+                logger.error("âš ï¸ Please ensure LMStudio is running with at least one model loaded.")
         except Exception as e:
-            logger.error(f"⚠️ CRITICAL: Failed to initialize models: {e}", exc_info=True)
-            logger.error("⚠️ The bot may not function correctly.")
+            logger.error(f"âš ï¸ CRITICAL: Failed to initialize models: {e}", exc_info=True)
+            logger.error("âš ï¸ The bot may not function correctly.")
         
         # Log channel details
         for channel_id in CHANNEL_IDS:
@@ -190,7 +206,7 @@ def setup_events(bot):
             return
         
         # Send initial "thinking" status
-        status_msg = await message.channel.send("🤔 Thinking...")
+        status_msg = await message.channel.send(MSG_THINKING)
         
         # Track message edits for rate limiting
         edit_tracker = {
@@ -205,7 +221,7 @@ def setup_events(bot):
             
             # Process attachments and track tool usage
             if message.attachments:
-                await update_status(status_msg, "📎 Processing attachments...", edit_tracker)
+                await update_status(status_msg, MSG_PROCESSING_ATTACHMENTS, edit_tracker)
             
             images, text_files_content = await process_all_attachments(message.attachments, message.channel)
             
@@ -232,7 +248,7 @@ def setup_events(bot):
             
             # Load initial context if needed
             if len(get_conversation_history(conversation_id)) == 0 and not is_context_loaded(conversation_id) and CONTEXT_MESSAGES > 0:
-                await update_status(status_msg, "📚 Loading conversation context...", edit_tracker)
+                await update_status(status_msg, MSG_LOADING_CONTEXT, edit_tracker)
                 recent_context = await get_recent_context(message.channel, CONTEXT_MESSAGES)
                 for ctx_msg in recent_context:
                     add_message_to_history(conversation_id, ctx_msg["role"], ctx_msg["content"])
@@ -251,12 +267,12 @@ def setup_events(bot):
                     cooldown = check_search_cooldown(guild_id)
                     if cooldown:
                         await message.channel.send(
-                            f"⏱️ Search is on cooldown. Please wait {cooldown} more seconds.",
+                            f"â±ï¸ Search is on cooldown. Please wait {cooldown} more seconds.",
                             delete_after=10
                         )
                     else:
-                        await update_status(status_msg, "🔍 Searching the web...", edit_tracker)
-                        logger.info(f"🔍 Triggering web search for: '{combined_message[:50]}...'")
+                        await update_status(status_msg, MSG_SEARCHING_WEB, edit_tracker)
+                        logger.info(f"ðŸ” Triggering web search for: '{combined_message[:50]}...'")
                         web_context = await get_web_context(combined_message)
                         
                         if web_context:
@@ -270,7 +286,7 @@ def setup_events(bot):
             url_context = ""
             if not web_search_triggered:
                 if any(url in combined_message for url in ['http://', 'https://']):
-                    await update_status(status_msg, "🌐 Fetching URL content...", edit_tracker)
+                    await update_status(status_msg, MSG_FETCHING_URL, edit_tracker)
                 
                 url_context = await process_message_urls(combined_message)
                 if url_context:
@@ -278,7 +294,7 @@ def setup_events(bot):
             
             # Add contexts to system prompt
             if web_context or url_context:
-                await update_status(status_msg, "🧠 Building context...", edit_tracker)
+                await update_status(status_msg, MSG_BUILDING_CONTEXT, edit_tracker)
                 
                 final_system_prompt += "\n\nADDITIONAL CONTEXT FOR THIS REQUEST:"
                 if web_context:
@@ -292,11 +308,11 @@ def setup_events(bot):
                 )
                 
                 # Truncate if too long
-                if len(final_system_prompt) > 60000:
-                    logger.warning(f"⚠️ Total system context too large ({len(final_system_prompt)}). Truncating to 60k.")
-                    truncated = final_system_prompt[:59900]
+                if len(final_system_prompt) > MAX_SYSTEM_PROMPT_CONTEXT:
+                    logger.warning(f"âš ï¸ Total system context too large ({len(final_system_prompt)}). Truncating to {MAX_SYSTEM_PROMPT_CONTEXT // 1000}k.")
+                    truncated = final_system_prompt[:SYSTEM_PROMPT_TRUNCATE_TO]
                     last_paragraph = truncated.rfind('\n\n')
-                    if last_paragraph > 50000:
+                    if last_paragraph > SYSTEM_PROMPT_SAFE_TRUNCATE:
                         final_system_prompt = truncated[:last_paragraph]
                     else:
                         final_system_prompt = truncated
@@ -322,11 +338,11 @@ def setup_events(bot):
             estimated_prompt_tokens = estimate_tokens(str(api_messages))
             
             # Stream the response
-            await update_status(status_msg, "✍️ Writing response...", edit_tracker)
+            await update_status(status_msg, MSG_WRITING_RESPONSE, edit_tracker)
             
             start_time = time.time()
             response_text = ""
-            update_interval = 1.5
+            update_interval = STREAM_UPDATE_INTERVAL
             
             async for chunk in stream_completion(api_messages, model_to_use, temperature, max_tokens):
                 response_text += chunk
@@ -343,18 +359,18 @@ def setup_events(bot):
                     display_text = remove_thinking_tags(response_text)
                     
                     if not is_inside_thinking_tags(response_text):
-                        display_text = display_text[:1900] + "..." if len(display_text) > 1900 else display_text
+                        display_text = display_text[:DISCORD_SAFE_DISPLAY_LIMIT] + "..." if len(display_text) > DISCORD_SAFE_DISPLAY_LIMIT else display_text
                         
                         if display_text.strip():
                             try:
-                                await status_msg.edit(content=display_text if display_text else "✍️ Writing response...")
+                                await status_msg.edit(content=display_text if display_text else MSG_WRITING_RESPONSE)
                                 edit_tracker['last_update'] = current_time
                                 edit_tracker['count'] += 1
                             except discord.errors.HTTPException as e:
                                 logger.warning(f"Failed to edit message: {e}")
                     else:
                         try:
-                            await status_msg.edit(content="✍️ Writing response...")
+                            await status_msg.edit(content=MSG_WRITING_RESPONSE)
                             edit_tracker['last_update'] = current_time
                             edit_tracker['count'] += 1
                         except discord.errors.HTTPException as e:

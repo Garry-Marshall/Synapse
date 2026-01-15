@@ -8,7 +8,13 @@ from typing import Optional, Dict
 
 from ddgs import DDGS
 
-from config.constants import SEARCH_TRIGGERS, NEGATIVE_SEARCH_TRIGGERS, MIN_MESSAGE_LENGTH_FOR_SEARCH, MAX_SEARCH_RESULTS
+from config.constants import (
+    SEARCH_TRIGGERS,
+    NEGATIVE_SEARCH_TRIGGERS,
+    MIN_MESSAGE_LENGTH_FOR_SEARCH,
+    MAX_SEARCH_RESULTS,
+    SEARCH_COOLDOWN_CLEANUP,
+)
 from config.settings import SEARCH_COOLDOWN
 
 
@@ -23,7 +29,7 @@ def cleanup_old_cooldowns() -> None:
     current_time = time.time()
     old_guilds = [
         guild_id for guild_id, timestamp in search_cooldowns.items()
-        if current_time - timestamp > 3600  # 1 hour
+        if current_time - timestamp > SEARCH_COOLDOWN_CLEANUP  # 1 hour
     ]
     
     for guild_id in old_guilds:

@@ -7,6 +7,7 @@ from discord import app_commands
 import logging
 
 from config.settings import ALLOW_DMS
+from config.constants import MSG_DM_NOT_ENABLED
 from utils.stats_manager import get_or_create_stats, get_stats_summary
 
 
@@ -28,7 +29,7 @@ def setup_stats_commands(tree: app_commands.CommandTree):
         
         if not interaction.guild and not ALLOW_DMS:
             await interaction.response.send_message(
-                "❌ DM conversations are not enabled.",
+                MSG_DM_NOT_ENABLED,
                 ephemeral=True
             )
             return
@@ -41,4 +42,3 @@ def setup_stats_commands(tree: app_commands.CommandTree):
         
         await interaction.response.send_message(stats_message, ephemeral=True)
         logger.info(f"Stats displayed for conversation {conversation_id}")
-       

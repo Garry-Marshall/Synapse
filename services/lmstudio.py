@@ -8,7 +8,13 @@ import logging
 from typing import AsyncGenerator, List, Dict, Optional
 
 from config.settings import LMSTUDIO_URL, MAX_HISTORY
-from config.constants import DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS
+from config.constants import (
+    DEFAULT_TEMPERATURE,
+    DEFAULT_MAX_TOKENS,
+    MIN_TEMPERATURE,
+    MAX_TEMPERATURE,
+    HISTORY_MULTIPLIER,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +81,9 @@ def validate_parameters(temperature: float, max_tokens: int) -> tuple[float, int
     if not isinstance(temperature, (int, float)):
         logger.warning(f"Invalid temperature type: {type(temperature)}, using default")
         temperature = DEFAULT_TEMPERATURE
-    elif not (0.0 <= temperature <= 2.0):
+    elif not (MIN_TEMPERATURE <= temperature <= MAX_TEMPERATURE):
         logger.warning(f"Temperature {temperature} out of range [0.0, 2.0], clamping")
-        temperature = max(0.0, min(2.0, temperature))
+        temperature = max(MIN_TEMPERATURE, min(MAX_TEMPERATURE, temperature))
     
     # Validate max_tokens
     if not isinstance(max_tokens, int):
@@ -121,8 +127,8 @@ def build_api_messages(
             api_messages.append(msg.copy())
     
     # Limit history to prevent context overflow
-    if len(api_messages) > MAX_HISTORY * 2:
-        api_messages = [api_messages[0]] + api_messages[-(MAX_HISTORY * 2 - 1):]
+    if len(api_messages) > MAX_HISTORY * HISTORY_MULTIPLIER:
+        api_messages = [api_messages[0]] + api_messages[-(MAX_HISTORY * HISTORY_MULTIPLIER - 1):]
     
     return api_messages
 

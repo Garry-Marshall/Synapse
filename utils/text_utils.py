@@ -4,6 +4,7 @@ Handles token estimation, thinking tag removal, and text cleaning.
 """
 import re
 from config.settings import HIDE_THINKING
+from config.constants import CHARS_PER_TOKEN, DISCORD_MESSAGE_LIMIT
 
 
 def estimate_tokens(text: str) -> int:
@@ -16,7 +17,7 @@ def estimate_tokens(text: str) -> int:
     Returns:
         Estimated number of tokens
     """
-    return len(text) // 4
+    return len(text) // CHARS_PER_TOKEN
 
 
 def remove_thinking_tags(text: str) -> str:
@@ -100,7 +101,7 @@ def extract_urls(text: str) -> list[str]:
     Returns:
         List of found URLs
     """
-    url_pattern = r'https?://(?:[^\s()<>]+|(?:\([^\s()<>]*\)))+(?:(?:\([^\s()<>]*\))|[^\s`!()\[\]{};:\'".,<>?«»""''])'
+    url_pattern = r'https?://(?:[^\s()<>]+|(?:\([^\s()<>]*\)))+(?:(?:\([^\s()<>]*\))|[^\s`!()\[\]{};:\'".,<>?Â«Â»""''])'
     return re.findall(url_pattern, text)
 
 
@@ -127,13 +128,13 @@ def clean_discord_content(text: str) -> str:
     return text.strip()
 
 
-def split_message(text: str, max_length: int = 2000) -> list[str]:
+def split_message(text: str, max_length: int = DISCORD_MESSAGE_LIMIT) -> list[str]:
     """
     Split a long message into chunks that fit Discord's message limit.
     
     Args:
         text: Text to split
-        max_length: Maximum length per chunk (default: 2000 for Discord)
+        max_length: Maximum length per chunk (default: Discord's 2000 char limit)
         
     Returns:
         List of text chunks

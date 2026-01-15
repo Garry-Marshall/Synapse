@@ -8,7 +8,13 @@ import os
 from typing import Any, Dict, Optional
 from threading import Lock
 
-from config.constants import DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS
+from config.constants import (
+    DEFAULT_TEMPERATURE,
+    DEFAULT_MAX_TOKENS,
+    MIN_TEMPERATURE,
+    MAX_TEMPERATURE,
+    MAX_SYSTEM_PROMPT_LENGTH,
+)
 from config.settings import GUILD_SETTINGS_FILE, ENABLE_TTS, ALLTALK_VOICE
 
 logger = logging.getLogger(__name__)
@@ -31,12 +37,12 @@ class SettingsManager:
         "system_prompt": {
             "type": str,
             "default": None,
-            "validator": lambda v: len(v) <= 10000 if v else True
+            "validator": lambda v: len(v) <= MAX_SYSTEM_PROMPT_LENGTH if v else True
         },
         "temperature": {
             "type": float,
             "default": DEFAULT_TEMPERATURE,
-            "validator": lambda v: 0.0 <= v <= 2.0
+            "validator": lambda v: MIN_TEMPERATURE <= v <= MAX_TEMPERATURE
         },
         "max_tokens": {
             "type": int,

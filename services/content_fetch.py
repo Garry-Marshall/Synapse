@@ -7,7 +7,7 @@ import logging
 import trafilatura
 from trafilatura.settings import use_config
 
-from config.constants import MAX_URL_CHARS
+from config.constants import MAX_URL_CHARS, DEFAULT_USER_AGENT
 from utils.text_utils import extract_urls
 
 logger = logging.getLogger(__name__)
@@ -28,8 +28,8 @@ async def fetch_url_content(url: str) -> str:
         new_config = use_config()
         new_config.set(
             "DEFAULT", 
-            "USER_AGENT", 
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+            "USER_AGENT",
+            DEFAULT_USER_AGENT
         )
         
         # Pass the config object
@@ -80,7 +80,7 @@ async def process_message_urls(message_text: str) -> str:
     
     # Focus on the first URL provided
     target_url = found_urls[0]
-    logger.info(f"🔗 URL detected. Fetching content from: {target_url}")
+    logger.info(f"ðŸ”— URL detected. Fetching content from: {target_url}")
     
     url_content = await fetch_url_content(target_url)
     

@@ -8,7 +8,13 @@ from typing import Dict, List, Optional
 import logging
 
 from services.lmstudio import fetch_available_models
-from config.constants import DEFAULT_MODEL
+from config.constants import (
+    DEFAULT_MODEL,
+    DISCORD_SELECT_MAX_OPTIONS,
+    MSG_SERVER_ONLY,
+    MSG_ADMIN_ONLY,
+    MSG_NO_MODELS_AVAILABLE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +42,7 @@ class ModelSelectDropdown(discord.ui.Select):
     """Dropdown menu for selecting AI model."""
     def __init__(self, current_model: str):
         if not available_models:
-            options = [discord.SelectOption(label="No models available", value="none")]
+            options = [discord.SelectOption(label=MSG_NO_MODELS_AVAILABLE, value="none")]
         else:
             options = [
                 discord.SelectOption(
@@ -44,7 +50,7 @@ class ModelSelectDropdown(discord.ui.Select):
                     value=model,
                     default=(model == current_model)
                 )
-                for model in available_models[:25]  # Discord limit
+                for model in available_models[:DISCORD_SELECT_MAX_OPTIONS]  # Discord limit
             ]
         
         super().__init__(
@@ -57,7 +63,7 @@ class ModelSelectDropdown(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         if self.values[0] == "none":
             await interaction.response.send_message(
-                "❌ No models available.", 
+                MSG_NO_MODELS_AVAILABLE, 
                 ephemeral=True
             )
             return
@@ -67,7 +73,7 @@ class ModelSelectDropdown(discord.ui.Select):
         selected_models[guild_id] = selected_model
         
         await interaction.response.send_message(
-            f"✅ Model changed to: **{selected_model}**",
+            f"âœ… Model changed to: **{selected_model}**",
             ephemeral=True
         )
         logger.info(f"Model changed to '{selected_model}' in guild {guild_id} ({interaction.guild.name})")
@@ -87,7 +93,7 @@ def setup_model_command(tree: app_commands.CommandTree):
         # Check if in a guild (not DM)
         if not interaction.guild:
             await interaction.response.send_message(
-                "❌ This command only works in servers, not DMs.",
+                MSG_SERVER_ONLY,
                 ephemeral=True
             )
             return
@@ -95,7 +101,7 @@ def setup_model_command(tree: app_commands.CommandTree):
         # Check admin permissions
         if not is_guild_admin(interaction):
             await interaction.response.send_message(
-                "❌ Only admins can change the model.", 
+                MSG_ADMIN_ONLY, 
                 ephemeral=True
             )
             return
@@ -113,7 +119,7 @@ def setup_model_command(tree: app_commands.CommandTree):
         
         if not available_models:
             await interaction.followup.send(
-                "❌ No models found in LMStudio. Please load a model first.",
+                MSG_NO_MODELS_AVAILABLE,
                 ephemeral=True
             )
             return
@@ -121,7 +127,7 @@ def setup_model_command(tree: app_commands.CommandTree):
         guild_id = interaction.guild.id
         current_model = selected_models.get(guild_id, default_model)
         
-        model_list = "\n".join(f"• {model}" for model in available_models)
+        model_list = "\n".join(f"â€¢ {model}" for model in available_models)
         
         view = ModelSelectView(current_model)
         await interaction.followup.send(
@@ -171,9 +177,9 @@ async def initialize_models() -> bool:
     if models:
         available_models = models
         default_model = models[0]
-        logger.info(f'✅ Loaded {len(models)} model(s) from LMStudio')
+        logger.info(f'âœ… Loaded {len(models)} model(s) from LMStudio')
         logger.info(f'Default model set to: {default_model}')
         return True
     else:
-        logger.error('❌ No models found in LMStudio. Please load a model.')
+        logger.error(MSG_NO_MODELS_AVAILABLE)
         return False

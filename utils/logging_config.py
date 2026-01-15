@@ -9,6 +9,7 @@ from logging.handlers import RotatingFileHandler
 from typing import Optional
 
 from config.settings import LOG_DIR
+from config.constants import LOG_MAX_BYTES, LOG_BACKUP_COUNT
 
 
 def setup_logging():
@@ -22,30 +23,23 @@ def setup_logging():
     # Create log filename with date stamp
     log_filename = os.path.join(LOG_DIR, f"bot_{datetime.now().strftime('%Y-%m-%d')}.log")
     
-    # Configure root logger
+    # Configure logging to both file and console
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format='%(asctime)s [%(levelname)s] %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
         handlers=[
             # File handler with rotation (max 10MB per file, keep 5 backup files)
             RotatingFileHandler(
                 log_filename, 
-                maxBytes=10*1024*1024, 
-                backupCount=5, 
+                maxBytes=LOG_MAX_BYTES, 
+                backupCount=LOG_BACKUP_COUNT, 
                 encoding='utf-8'
             ),
             # Console handler
             logging.StreamHandler()
         ]
     )
-    
-    # Reduce verbosity of discord.py and other libraries
-    logging.getLogger('discord').setLevel(logging.INFO)
-    logging.getLogger('discord.http').setLevel(logging.WARNING)
-    logging.getLogger('discord.gateway').setLevel(logging.WARNING)
-    logging.getLogger('discord.client').setLevel(logging.INFO)
-    logging.getLogger('aiohttp').setLevel(logging.WARNING)
     
     logger = logging.getLogger(__name__)
     logger.info(f"Logging initialized. Log file: {log_filename}")

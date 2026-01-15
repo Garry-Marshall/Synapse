@@ -10,7 +10,7 @@ from typing import Optional, List, Dict
 from pypdf import PdfReader
 
 from config.settings import ALLOW_IMAGES, MAX_IMAGE_SIZE, ALLOW_TEXT_FILES, MAX_TEXT_FILE_SIZE, ALLOW_PDF, MAX_PDF_SIZE
-from config.constants import TEXT_FILE_EXTENSIONS, FILE_ENCODINGS, MAX_PDF_CHARS
+from config.constants import TEXT_FILE_EXTENSIONS, FILE_ENCODINGS, MAX_PDF_CHARS, BYTES_PER_MB
 
 
 logger = logging.getLogger(__name__)
@@ -33,11 +33,11 @@ async def process_image_attachment(attachment, channel) -> Optional[Dict]:
     if not attachment.content_type or not attachment.content_type.startswith('image/'):
         return None
     
-    if attachment.size > MAX_IMAGE_SIZE * 1024 * 1024:
-        logger.warning(f"Image too large: {attachment.size / (1024*1024):.2f}MB (max: {MAX_IMAGE_SIZE}MB)")
+    if attachment.size > MAX_IMAGE_SIZE * BYTES_PER_MB:
+        logger.warning(f"Image too large: {attachment.size / BYTES_PER_MB:.2f}MB (max: {MAX_IMAGE_SIZE}MB)")
         await channel.send(
-            f"⚠️ Image **{attachment.filename}** is too large "
-            f"({attachment.size / (1024*1024):.2f}MB). Maximum size is {MAX_IMAGE_SIZE}MB."
+            f"âš ï¸ Image **{attachment.filename}** is too large "
+            f"({attachment.size / BYTES_PER_MB:.2f}MB). Maximum size is {MAX_IMAGE_SIZE}MB."
         )
         return None
     
@@ -71,7 +71,7 @@ async def process_image_attachment(attachment, channel) -> Optional[Dict]:
         
     except Exception as e:
         logger.error(f"Error processing image {attachment.filename}: {e}")
-        await channel.send(f"❌ Failed to process image **{attachment.filename}**: {str(e)}")
+        await channel.send(f"âŒ Failed to process image **{attachment.filename}**: {str(e)}")
         return None
 
 
@@ -99,11 +99,11 @@ async def process_text_attachment(attachment, channel) -> Optional[str]:
     if not is_text:
         return None
     
-    if attachment.size > MAX_TEXT_FILE_SIZE * 1024 * 1024:
-        logger.warning(f"Text file too large: {attachment.size / (1024*1024):.2f}MB (max: {MAX_TEXT_FILE_SIZE}MB)")
+    if attachment.size > MAX_TEXT_FILE_SIZE * BYTES_PER_MB:
+        logger.warning(f"Text file too large: {attachment.size / BYTES_PER_MB:.2f}MB (max: {MAX_TEXT_FILE_SIZE}MB)")
         await channel.send(
-            f"⚠️ Text file **{attachment.filename}** is too large "
-            f"({attachment.size / (1024*1024):.2f}MB). Maximum size is {MAX_TEXT_FILE_SIZE}MB."
+            f"âš ï¸ Text file **{attachment.filename}** is too large "
+            f"({attachment.size / BYTES_PER_MB:.2f}MB). Maximum size is {MAX_TEXT_FILE_SIZE}MB."
         )
         return None
     
@@ -122,14 +122,14 @@ async def process_text_attachment(attachment, channel) -> Optional[str]:
         # If all encodings failed
         logger.error(f"Could not decode text file {attachment.filename}")
         await channel.send(
-            f"❌ Could not decode text file **{attachment.filename}**. "
+            f"âŒ Could not decode text file **{attachment.filename}**. "
             f"Please ensure it's a valid text file."
         )
         return None
         
     except Exception as e:
         logger.error(f"Error processing text file {attachment.filename}: {e}")
-        await channel.send(f"❌ Failed to process text file **{attachment.filename}**: {str(e)}")
+        await channel.send(f"âŒ Failed to process text file **{attachment.filename}**: {str(e)}")
         return None
 
 
@@ -152,11 +152,11 @@ async def process_pdf_attachment(attachment, channel) -> Optional[str]:
     if not is_pdf:
         return None
     
-    if attachment.size > MAX_PDF_SIZE * 1024 * 1024:
-        logger.warning(f"PDF too large: {attachment.size / (1024*1024):.2f}MB (max: {MAX_PDF_SIZE}MB)")
+    if attachment.size > MAX_PDF_SIZE * BYTES_PER_MB:
+        logger.warning(f"PDF too large: {attachment.size / BYTES_PER_MB:.2f}MB (max: {MAX_PDF_SIZE}MB)")
         await channel.send(
-            f"⚠️ PDF **{attachment.filename}** is too large "
-            f"({attachment.size / (1024*1024):.2f}MB). Maximum size is {MAX_PDF_SIZE}MB."
+            f"âš ï¸ PDF **{attachment.filename}** is too large "
+            f"({attachment.size / BYTES_PER_MB:.2f}MB). Maximum size is {MAX_PDF_SIZE}MB."
         )
         return None
     
@@ -175,7 +175,7 @@ async def process_pdf_attachment(attachment, channel) -> Optional[str]:
                 if current_length + len(page_text) > MAX_PDF_CHARS:
                     remaining_space = MAX_PDF_CHARS - current_length
                     extracted_text.append(f"--- Page {i+1} (TRUNCATED) ---\n{page_text[:remaining_space]}")
-                    logger.info(f"✂️ PDF {attachment.filename} truncated at page {i+1}")
+                    logger.info(f"âœ‚ï¸ PDF {attachment.filename} truncated at page {i+1}")
                     break
                 
                 extracted_text.append(f"--- Page {i+1} ---\n{page_text}")
@@ -190,7 +190,7 @@ async def process_pdf_attachment(attachment, channel) -> Optional[str]:
         
     except Exception as e:
         logger.error(f"Error processing PDF {attachment.filename}: {e}")
-        await channel.send(f"❌ Failed to process PDF **{attachment.filename}**: {str(e)}")
+        await channel.send(f"âŒ Failed to process PDF **{attachment.filename}**: {str(e)}")
         return None
 
 

@@ -128,3 +128,138 @@ INACTIVITY_THRESHOLD_DAYS = 30
 # Constants for rate limiting
 MAX_MESSAGE_EDITS_PER_WINDOW = 4  # Discord allows 5, use 4 to be safe
 MESSAGE_EDIT_WINDOW = 5.0  # seconds
+
+# ============================================================================
+# TOKEN ESTIMATION
+# ============================================================================
+
+# Rough character-to-token ratio (1 token ≈ 4 characters)
+CHARS_PER_TOKEN = 4
+
+# ============================================================================
+# API TIMEOUTS AND LIMITS
+# ============================================================================
+
+# HTTP timeout for external API calls (seconds)
+DEFAULT_HTTP_TIMEOUT = 5
+LMSTUDIO_TIMEOUT = 10
+TTS_TIMEOUT = 60
+
+# Discord UI interaction timeout
+DISCORD_VIEW_TIMEOUT = 60
+DISCORD_CONFIG_VIEW_TIMEOUT = 300  # 5 minutes
+
+# Maximum models to show in Discord dropdown (Discord limitation)
+DISCORD_SELECT_MAX_OPTIONS = 25
+
+# ============================================================================
+# MESSAGE PROCESSING
+# ============================================================================
+
+# Message update interval for streaming responses (seconds)
+STREAM_UPDATE_INTERVAL = 1.5
+
+# Discord message length limits
+DISCORD_MESSAGE_LIMIT = 2000
+DISCORD_SAFE_DISPLAY_LIMIT = 1900  # Leave buffer for "..."
+
+# System prompt truncation limits
+MAX_SYSTEM_PROMPT_LENGTH = 10000  # For validation
+MAX_SYSTEM_PROMPT_CONTEXT = 60000  # Total context including search results
+SYSTEM_PROMPT_TRUNCATE_TO = 59900
+SYSTEM_PROMPT_SAFE_TRUNCATE = 50000  # Safe paragraph boundary search
+
+# ============================================================================
+# HISTORY MANAGEMENT
+# ============================================================================
+
+# Multiplier for API message history limit
+HISTORY_MULTIPLIER = 2
+
+# ============================================================================
+# LOGGING
+# ============================================================================
+
+# Log file rotation settings
+LOG_MAX_BYTES = 10 * 1024 * 1024  # 10MB
+LOG_BACKUP_COUNT = 5
+
+# ============================================================================
+# COOLDOWNS AND CLEANUP
+# ============================================================================
+
+# Search cooldown cleanup threshold (seconds)
+SEARCH_COOLDOWN_CLEANUP = 3600  # 1 hour
+
+# CPU measurement interval for system stats (seconds)
+CPU_MEASUREMENT_INTERVAL = 0.1
+
+# ============================================================================
+# FILE SIZE CONVERSION
+# ============================================================================
+
+BYTES_PER_MB = 1024 * 1024
+
+# ============================================================================
+# USER AGENT
+# ============================================================================
+
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+)
+
+# ============================================================================
+# TEMPERATURE BOUNDS
+# ============================================================================
+
+MIN_TEMPERATURE = 0.0
+MAX_TEMPERATURE = 2.0
+
+# ============================================================================
+# IMAGE TOKEN ESTIMATION (Vision Models)
+# ============================================================================
+
+# Vision models use tile-based processing (e.g., OpenAI's approach)
+# Images are divided into 512×512 tiles after resizing to fit 2048×2048
+IMAGE_BASE_TOKENS = 85
+TOKENS_PER_IMAGE_TILE = 170
+
+# Conservative estimate: assume large images (e.g., 3072×2048 = 24 tiles)
+IMAGE_ESTIMATED_TILES = 24
+IMAGE_DEFAULT_TOKEN_ESTIMATE = IMAGE_BASE_TOKENS + (IMAGE_ESTIMATED_TILES * TOKENS_PER_IMAGE_TILE)
+
+# ============================================================================
+# USER-FACING MESSAGES
+# ============================================================================
+
+# Status messages
+MSG_THINKING = "🤔 Thinking..."
+MSG_PROCESSING_ATTACHMENTS = "🔎 Processing attachments..."
+MSG_LOADING_CONTEXT = "📚 Loading conversation context..."
+MSG_SEARCHING_WEB = "🔍 Searching the web..."
+MSG_FETCHING_URL = "🌐 Fetching URL content..."
+MSG_BUILDING_CONTEXT = "🧠 Building context..."
+MSG_WRITING_RESPONSE = "✍️ Writing response..."
+
+# Error messages
+MSG_DM_NOT_ENABLED = "❌ DM conversations are not enabled."
+MSG_ADMIN_ONLY = "❌ Only admins can modify settings."
+MSG_SERVER_ONLY = "❌ This command only works in servers, not DMs."
+MSG_TTS_DISABLED_GLOBAL = "❌ TTS is currently disabled globally in the bot configuration."
+MSG_TTS_DISABLED_SERVER = "❌ TTS is disabled for this server. An admin can enable it using '/config'."
+MSG_NEED_VOICE_CHANNEL = "❌ You need to be in a voice channel first!"
+MSG_NOT_IN_VOICE = "❌ I'm not in a voice channel!"
+MSG_CONFIG_ONLY_SERVERS = "❌ Configuration is only available in servers."
+MSG_ALREADY_IN_VOICE = "✅ Already in your voice channel!"
+MSG_NO_MODELS_AVAILABLE = "❌ No models found in LMStudio. Please load a model first."
+
+# Success messages
+MSG_SETTINGS_RESET = "✅ All settings reset to defaults."
+MSG_STATS_CLEARED = "✅ Statistics cleared."
+MSG_VOICE_CHANGED = "✅ Voice changed to: **{voice}**"
+MSG_MODEL_CHANGED = "✅ Model changed to: **{model}**"
+MSG_SETTING_UPDATED = "✅ {setting} updated."
+MSG_LEFT_VOICE = "✅ Left the voice channel."
+MSG_JOINED_VOICE = "✅ Joined {channel}!"
+MSG_MOVED_VOICE = "✅ Moved to {channel}!"

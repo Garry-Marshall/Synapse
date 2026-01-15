@@ -11,6 +11,7 @@ import psutil
 import sys
 from datetime import datetime, timedelta
 
+from config.constants import CPU_MEASUREMENT_INTERVAL
 from config.settings import LMSTUDIO_URL, ALLTALK_URL, ENABLE_TTS
 from services.lmstudio import fetch_available_models
 from commands.model import default_model, get_selected_model
@@ -102,7 +103,7 @@ def get_system_stats() -> dict:
         memory_mb = memory_info.rss / 1024 / 1024
         
         # Get CPU usage (over 1 second interval)
-        cpu_percent = process.cpu_percent(interval=0.1)
+        cpu_percent = process.cpu_percent(interval=CPU_MEASUREMENT_INTERVAL)
         
         # Get uptime
         create_time = datetime.fromtimestamp(process.create_time())
@@ -205,24 +206,24 @@ def setup_status_command(tree: app_commands.CommandTree):
         
         # Create status embed
         embed = discord.Embed(
-            title="🤖 Bot Status & Health Check",
+            title="ðŸ¤– Bot Status & Health Check",
             color=discord.Color.green() if (lm_healthy and tt_healthy) else discord.Color.orange(),
             timestamp=datetime.now()
         )
         
         # Service Status
-        lm_emoji = "✅" if lm_healthy else "❌"
-        tt_emoji = "✅" if tt_healthy else "❌"
+        lm_emoji = "âœ…" if lm_healthy else "âŒ"
+        tt_emoji = "âœ…" if tt_healthy else "âŒ"
         
         embed.add_field(
-            name="🔧 Services",
+            name="ðŸ”§ Services",
             value=(
                 f"{lm_emoji} **LMStudio**: {lm_status}\n"
-                f"└ Response: {lm_time:.0f}ms\n"
-                f"└ URL: `{LMSTUDIO_URL}`\n"
+                f"â”” Response: {lm_time:.0f}ms\n"
+                f"â”” URL: `{LMSTUDIO_URL}`\n"
                 f"{tt_emoji} **AllTalk TTS**: {tt_status}\n"
-                f"└ Response: {tt_time:.0f}ms\n"
-                f"└ URL: `{ALLTALK_URL}`"
+                f"â”” Response: {tt_time:.0f}ms\n"
+                f"â”” URL: `{ALLTALK_URL}`"
             ),
             inline=False
         )
@@ -236,19 +237,19 @@ def setup_status_command(tree: app_commands.CommandTree):
             models_list = ", ".join(current_models[:3])
             if len(current_models) > 3:
                 models_list += f", +{len(current_models) - 3} more"
-            model_info += f"└ {models_list}"
+            model_info += f"â”” {models_list}"
         else:
-            model_info += f"└ ⚠️ No models loaded in LMStudio"
+            model_info += f"â”” âš ï¸ No models loaded in LMStudio"
         
         embed.add_field(
-            name="🧠 AI Models",
+            name="ðŸ§  AI Models",
             value=model_info,
             inline=False
         )
         
         # System Resources
         embed.add_field(
-            name="💻 System Resources",
+            name="ðŸ’» System Resources",
             value=(
                 f"**Memory**: {sys_stats['memory_mb']:.1f} MB\n"
                 f"**CPU**: {sys_stats['cpu_percent']:.1f}%\n"
@@ -261,7 +262,7 @@ def setup_status_command(tree: app_commands.CommandTree):
         
         # Bot Statistics
         embed.add_field(
-            name="📊 Bot Statistics",
+            name="ðŸ“Š Bot Statistics",
             value=(
                 f"**Total Messages**: {bot_stats['total_messages']:,}\n"
                 f"**Conversations**: {bot_stats['active_conversations']}/{bot_stats['total_conversations']}\n"
@@ -274,11 +275,11 @@ def setup_status_command(tree: app_commands.CommandTree):
         
         # Overall health indicator
         if lm_healthy and tt_healthy:
-            health_msg = "🟢 All systems operational"
+            health_msg = "ðŸŸ¢ All systems operational"
         elif lm_healthy:
-            health_msg = "🟡 LMStudio operational, TTS degraded"
+            health_msg = "ðŸŸ¡ LMStudio operational, TTS degraded"
         else:
-            health_msg = "🔴 Critical services unavailable"
+            health_msg = "ðŸ”´ Critical services unavailable"
         
         embed.set_footer(text=health_msg)
         
