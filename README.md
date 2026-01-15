@@ -33,6 +33,7 @@ This my personal Discord bot, but feel free to play with it as you see fit.
 &nbsp;&nbsp;&nbsp;&nbsp;•	✅ Conversation Stats - Track tokens, response times, messages, tool usage<br>
 &nbsp;&nbsp;&nbsp;&nbsp;•	✅ History Management - Clear, reset, or view conversation history<br>
 &nbsp;&nbsp;&nbsp;&nbsp;•	✅ Persistent Storage - Stats and settings saved across restarts<br>
+&nbsp;&nbsp;&nbsp;&nbsp;•	✅ Context Analysis - Shows estimated token usage in rolling context window<br>
 <br><hr><br>
 <pre>
 📁 Project Structure<br>
@@ -68,6 +69,7 @@ discord_bot/<br>
 │   ├── voice.py              # /join, /leave, /voice
 │   ├── model.py              # /model selection
 │   ├── config_cmd.py         # /config command
+│   ├── context_cmd.py        # /context command
 │   ├── help.py               # /help command
 │   └── __init__.py
 │
