@@ -229,6 +229,17 @@ TOKENS_PER_IMAGE_TILE = 170
 IMAGE_ESTIMATED_TILES = 24
 IMAGE_DEFAULT_TOKEN_ESTIMATE = IMAGE_BASE_TOKENS + (IMAGE_ESTIMATED_TILES * TOKENS_PER_IMAGE_TILE)
 
+
+# ============================================================================
+# STATS AND SETTINGS SAVE INTERVALS
+# ============================================================================
+
+# Inactivity threshold for cleanup (days)
+INACTIVITY_THRESHOLD_DAYS = 30
+
+# Interval for periodic saving of stats/settings (seconds)
+SAVE_INTERVAL = 300
+
 # ============================================================================
 # USER-FACING MESSAGES
 # ============================================================================
