@@ -175,6 +175,7 @@ Bot: This document discusses quarterly sales performance,<br>
 <b>Command           Description</b>
 
 <b>/stats</b>            Display detailed statistics
+<b>/context</b>          Shows estimated token usage
 </pre>
 
 <h4>⚙️ Configuration</h4>
