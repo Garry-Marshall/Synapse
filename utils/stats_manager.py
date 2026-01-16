@@ -159,18 +159,32 @@ def update_stats(
 def reset_stats(conversation_id: int) -> None:
     """
     Reset statistics for a conversation.
-    
+
     Args:
         conversation_id: Channel or DM ID
     """
     db = _get_db()
-    
+
     # Delete and recreate
     with db._get_cursor() as cursor:
         cursor.execute("DELETE FROM conversations WHERE conversation_id = ?", (conversation_id,))
-    
+
     db.create_conversation(conversation_id)
     logger.info(f"Reset stats for conversation {conversation_id}")
+
+
+def reset_guild_stats(guild_id: int) -> int:
+    """
+    Reset all statistics for all conversations in a guild.
+
+    Args:
+        guild_id: Guild ID
+
+    Returns:
+        Number of conversations reset
+    """
+    db = _get_db()
+    return db.reset_guild_stats(guild_id)
 
 
 def get_stats_summary(conversation_id: int) -> str:

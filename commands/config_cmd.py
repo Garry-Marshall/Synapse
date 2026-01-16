@@ -17,7 +17,7 @@ from utils.settings_manager import (
     get_debug_level,
     is_search_enabled
 )
-from utils.stats_manager import get_conversation_history, clear_conversation_history
+from utils.stats_manager import get_conversation_history, clear_conversation_history, reset_guild_stats
 from utils.permissions import check_admin_permission, require_guild_context
 
 logger = logging.getLogger(__name__)
@@ -424,11 +424,11 @@ class ConfigView(discord.ui.View):
         if not has_permission:
             await interaction.response.send_message(error_msg, ephemeral=True)
             return
-        
+
         # Clear all custom settings (including newly added ones)
         settings_to_clear = [
             "system_prompt",
-            "temperature", 
+            "temperature",
             "max_tokens",
             "debug",
             "debug_level",
@@ -436,19 +436,48 @@ class ConfigView(discord.ui.View):
             "tts_enabled",
             "selected_voice"
         ]
-        
+
         for setting in settings_to_clear:
             delete_guild_setting(self.guild_id, setting)
-        
+
         self.update_toggle_buttons()
         embed = self.create_embed()
-        
+
         await interaction.response.edit_message(embed=embed, view=self)
         await interaction.followup.send(
             "✅ All settings reset to defaults.",
             ephemeral=True
         )
         logger.info(f"All settings reset to defaults for guild {self.guild_id}")
+
+    @discord.ui.button(label="Clear All Stats", style=discord.ButtonStyle.danger, emoji="📊", row=3)
+    async def clear_all_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
+        has_permission, error_msg = check_admin_permission(interaction)
+        if not has_permission:
+            await interaction.response.send_message(error_msg, ephemeral=True)
+            return
+
+        # Get all channel IDs in this guild
+        guild = interaction.guild
+        channel_ids = [channel.id for channel in guild.channels]
+
+        # Reset statistics for all channels in this guild
+        reset_count = 0
+        from utils.stats_manager import reset_stats
+        from utils.database import get_database
+
+        db = get_database()
+        for channel_id in channel_ids:
+            # Check if conversation exists for this channel
+            if db.get_conversation(channel_id):
+                reset_stats(channel_id)
+                reset_count += 1
+
+        await interaction.response.send_message(
+            f"📊 Reset statistics for {reset_count} channel(s) in this server. All stats are now back to zero.",
+            ephemeral=True
+        )
+        logger.info(f"All statistics reset for guild {self.guild_id} ({reset_count} channels)")
 
 
 def setup_config_command(tree: app_commands.CommandTree):

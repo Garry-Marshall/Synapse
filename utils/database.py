@@ -380,6 +380,44 @@ class Database:
         with self._get_cursor() as cursor:
             cursor.execute("SELECT conversation_id FROM conversations")
             return [row['conversation_id'] for row in cursor.fetchall()]
+
+    def reset_guild_stats(self, guild_id: int) -> int:
+        """
+        Reset all statistics for conversations in a guild.
+
+        Args:
+            guild_id: Guild ID
+
+        Returns:
+            Number of conversations reset
+        """
+        with self._get_cursor() as cursor:
+            # Reset all stats for conversations in this guild
+            cursor.execute("""
+                UPDATE conversations SET
+                    start_time = CURRENT_TIMESTAMP,
+                    last_message_time = NULL,
+                    total_messages = 0,
+                    prompt_tokens_estimate = 0,
+                    response_tokens_raw = 0,
+                    response_tokens_cleaned = 0,
+                    failed_requests = 0,
+                    tool_usage = ?,
+                    response_times = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE guild_id = ?
+            """, (
+                json.dumps({"web_search": 0, "url_fetch": 0, "image_analysis": 0, "pdf_read": 0, "tts_voice": 0}),
+                json.dumps([]),
+                guild_id
+            ))
+
+            reset_count = cursor.rowcount
+
+        if reset_count > 0:
+            logger.info(f"Reset statistics for {reset_count} conversation(s) in guild {guild_id}")
+
+        return reset_count
     
     # ========================================================================
     # MIGRATION METHODS
