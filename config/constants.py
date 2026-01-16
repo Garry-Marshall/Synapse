@@ -33,7 +33,7 @@ SEARCH_TRIGGERS = [
     "who's currently", "who is currently", 
     "weather in", "temperature in", "today's",
     "who is the current", "who's the current",
-    "recent", "breaking news",
+    "recent", "breaking news", "weather forecast",
     
     # Price/cost queries
     "how much does", "how much is", "price of", "cost of",
