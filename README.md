@@ -179,13 +179,13 @@ discord_bot/
    # Model settings
    HIDE_THINKING=true
    
-   # TTS settings
-   ENABLE_TTS=true
+   # TTS settings (optional)
+   ENABLE_TTS=false
    ALLTALK_URL=http://127.0.0.1:7851
    ALLTALK_VOICE=alloy
 
    # ComfyUI settings (optional)
-   ENABLE_COMFYUI=true
+   ENABLE_COMFYUI=false
    COMFYUI_URL=127.0.0.1:8188
    COMFYUI_WORKFLOW=comfyUI-workflows/workflow_flux_api.json
    COMFYUI_PROMPT_NODES=6
