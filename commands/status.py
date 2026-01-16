@@ -16,6 +16,7 @@ from config.settings import LMSTUDIO_URL, ALLTALK_URL, ENABLE_TTS, ENABLE_COMFYU
 from services.lmstudio import fetch_available_models
 from commands.model import default_model, get_selected_model
 from utils.stats_manager import channel_stats, conversation_histories
+from utils.settings_manager import get_settings_manager
 
 logger = logging.getLogger(__name__)
 
@@ -221,24 +222,38 @@ def setup_status_command(tree: app_commands.CommandTree):
         """Display comprehensive bot status and health check."""
         await interaction.response.defer(ephemeral=True)
 
+        # Determine current guild
+        guild_id = interaction.guild.id if interaction.guild else None
+
+        # Get guild-specific settings
+        settings_manager = get_settings_manager()
+        tts_enabled_for_guild = settings_manager.is_tts_enabled(guild_id)
+        comfyui_enabled_for_guild = settings_manager.is_comfyui_enabled(guild_id)
+
         # Check service health
         lm_healthy, lm_status, lm_time = await check_lmstudio_health()
         tt_healthy, tt_status, tt_time = await check_alltalk_health()
         cf_healthy, cf_status, cf_time = await check_comfyui_health()
-        
+
         # Fetch fresh model list
         current_models = await fetch_available_models()
-        
+
         # Get system stats
         sys_stats = get_system_stats()
         bot_stats = get_bot_stats()
-        
+
         # Determine current model for this guild
-        guild_id = interaction.guild.id if interaction.guild else None
         current_model = get_selected_model(guild_id)
         
         # Create status embed
-        all_healthy = lm_healthy and tt_healthy and cf_healthy
+        # Only consider services that are enabled for this guild
+        services_to_check = [lm_healthy]
+        if tts_enabled_for_guild:
+            services_to_check.append(tt_healthy)
+        if comfyui_enabled_for_guild:
+            services_to_check.append(cf_healthy)
+
+        all_healthy = all(services_to_check)
         embed = discord.Embed(
             title="🤖 Bot Status & Health Check",
             color=discord.Color.green() if all_healthy else discord.Color.orange(),
@@ -253,14 +268,19 @@ def setup_status_command(tree: app_commands.CommandTree):
         services_value = (
             f"{lm_emoji} **LMStudio**: {lm_status}\n"
             f"└ Response: {lm_time:.0f}ms\n"
-            f"└ URL: `{LMSTUDIO_URL}`\n"
-            f"{tt_emoji} **AllTalk TTS**: {tt_status}\n"
-            f"└ Response: {tt_time:.0f}ms\n"
-            f"└ URL: `{ALLTALK_URL}`"
+            f"└ URL: `{LMSTUDIO_URL}`"
         )
 
-        # Only add ComfyUI if enabled
-        if ENABLE_COMFYUI:
+        # Only add AllTalk if enabled for this guild
+        if tts_enabled_for_guild:
+            services_value += (
+                f"\n{tt_emoji} **AllTalk TTS**: {tt_status}\n"
+                f"└ Response: {tt_time:.0f}ms\n"
+                f"└ URL: `{ALLTALK_URL}`"
+            )
+
+        # Only add ComfyUI if enabled for this guild
+        if comfyui_enabled_for_guild:
             services_value += (
                 f"\n{cf_emoji} **ComfyUI**: {cf_status}\n"
                 f"└ Response: {cf_time:.0f}ms\n"
@@ -314,8 +334,8 @@ def setup_status_command(tree: app_commands.CommandTree):
             f"**PDFs Read**: {bot_stats['tool_usage']['pdf_read']:,}"
         )
 
-        # Add ComfyUI stats if enabled
-        if ENABLE_COMFYUI:
+        # Add ComfyUI stats if enabled for this guild
+        if comfyui_enabled_for_guild:
             bot_stats_value += f"\n**Images Generated**: {bot_stats['tool_usage']['comfyui_generation']:,}"
 
         embed.add_field(
@@ -329,9 +349,9 @@ def setup_status_command(tree: app_commands.CommandTree):
             health_msg = "🟢 All systems operational"
         elif lm_healthy:
             degraded_services = []
-            if not tt_healthy and ENABLE_TTS:
+            if not tt_healthy and tts_enabled_for_guild:
                 degraded_services.append("TTS")
-            if not cf_healthy and ENABLE_COMFYUI:
+            if not cf_healthy and comfyui_enabled_for_guild:
                 degraded_services.append("ComfyUI")
             if degraded_services:
                 health_msg = f"🟡 LMStudio operational, {', '.join(degraded_services)} degraded"
