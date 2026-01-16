@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 # Cache for tiktoken encoding
 _encoding_cache = None
 
-
 def _get_encoding():
     """
     Get or create cached tiktoken encoding instance.

@@ -153,6 +153,15 @@ DISCORD_CONFIG_VIEW_TIMEOUT = 300  # 5 minutes
 DISCORD_SELECT_MAX_OPTIONS = 25
 
 # ============================================================================
+# LMSTUDIO TIMEOUTS AND LIMITS
+# ============================================================================
+
+LMSTUDIO_MAX_RETRIES = 3
+LMSTUDIO_INITIAL_RETRY_DELAY = 1.0  # seconds
+LMSTUDIO_MAX_RETRY_DELAY = 10.0  # seconds
+LMSTUDIO_RETRY_BACKOFF_MULTIPLIER = 2.0
+
+# ============================================================================
 # MESSAGE PROCESSING
 # ============================================================================
 

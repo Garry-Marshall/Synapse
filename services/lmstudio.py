@@ -10,17 +10,10 @@ from typing import AsyncGenerator, List, Dict, Optional
 
 from config.settings import LMSTUDIO_URL, MAX_HISTORY
 from utils.logging_config import guild_debug_log
-from config.constants import DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, MIN_TEMPERATURE, MAX_TEMPERATURE, HISTORY_MULTIPLIER
+from config.constants import DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, MIN_TEMPERATURE, MAX_TEMPERATURE, HISTORY_MULTIPLIER, LMSTUDIO_INITIAL_RETRY_DELAY, LMSTUDIO_MAX_RETRY_DELAY, LMSTUDIO_RETRY_BACKOFF_MULTIPLIER, LMSTUDIO_MAX_RETRIES
 
 
 logger = logging.getLogger(__name__)
-
-
-# Retry configuration
-MAX_RETRIES = 3
-INITIAL_RETRY_DELAY = 1.0  # seconds
-MAX_RETRY_DELAY = 10.0  # seconds
-RETRY_BACKOFF_MULTIPLIER = 2.0
 
 
 async def fetch_available_models() -> List[str]:
@@ -37,11 +30,11 @@ async def fetch_available_models() -> List[str]:
     )
     models_url = f"{base_url}/api/v1/models"
 
-    retry_delay = INITIAL_RETRY_DELAY
+    retry_delay = LMSTUDIO_INITIAL_RETRY_DELAY
 
-    for attempt in range(MAX_RETRIES):
+    for attempt in range(LMSTUDIO_MAX_RETRIES):
         try:
-            logger.info(f"Fetching models from: {models_url} (attempt {attempt + 1}/{MAX_RETRIES})")
+            logger.info(f"Fetching models from: {models_url} (attempt {attempt + 1}/{LMSTUDIO_MAX_RETRIES})")
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(models_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
@@ -74,15 +67,15 @@ async def fetch_available_models() -> List[str]:
                     return models
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            if attempt < MAX_RETRIES - 1:
+            if attempt < LMSTUDIO_MAX_RETRIES - 1:
                 logger.warning(
-                    f"Failed to fetch models (attempt {attempt + 1}/{MAX_RETRIES}): {e}. "
+                    f"Failed to fetch models (attempt {attempt + 1}/{LMSTUDIO_MAX_RETRIES}): {e}. "
                     f"Retrying in {retry_delay:.1f}s..."
                 )
                 await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay * RETRY_BACKOFF_MULTIPLIER, MAX_RETRY_DELAY)
+                retry_delay = min(retry_delay * LMSTUDIO_RETRY_BACKOFF_MULTIPLIER, LMSTUDIO_MAX_RETRY_DELAY)
             else:
-                logger.error(f"Failed to fetch models after {MAX_RETRIES} attempts", exc_info=True)
+                logger.error(f"Failed to fetch models after {LMSTUDIO_MAX_RETRIES} attempts", exc_info=True)
                 return []
         except Exception as e:
             logger.error(f"Unexpected error fetching models: {e}", exc_info=True)
@@ -199,10 +192,10 @@ async def stream_completion(
 
     guild_debug_log(guild_id, "debug", f"LMStudio API payload: {len(messages)} messages, model={model}")
 
-    retry_delay = INITIAL_RETRY_DELAY
+    retry_delay = LMSTUDIO_INITIAL_RETRY_DELAY
     last_error = None
 
-    for attempt in range(MAX_RETRIES):
+    for attempt in range(LMSTUDIO_MAX_RETRIES):
         try:
             timeout = aiohttp.ClientTimeout(total=300, sock_read=60)  # 5 min total, 60s read timeout
             async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -256,14 +249,14 @@ async def stream_completion(
                         last_error = f"LMStudio server error {response.status}: {error_text}"
                         logger.warning(last_error)
 
-                        if attempt < MAX_RETRIES - 1:
-                            logger.info(f"Retrying in {retry_delay:.1f}s... (attempt {attempt + 1}/{MAX_RETRIES})")
+                        if attempt < LMSTUDIO_MAX_RETRIES - 1:
+                            logger.info(f"Retrying in {retry_delay:.1f}s... (attempt {attempt + 1}/{LMSTUDIO_MAX_RETRIES})")
                             await asyncio.sleep(retry_delay)
-                            retry_delay = min(retry_delay * RETRY_BACKOFF_MULTIPLIER, MAX_RETRY_DELAY)
+                            retry_delay = min(retry_delay * LMSTUDIO_RETRY_BACKOFF_MULTIPLIER, LMSTUDIO_MAX_RETRY_DELAY)
                             continue
                         else:
-                            logger.error(f"Failed after {MAX_RETRIES} attempts")
-                            yield f"Error: LMStudio API error after {MAX_RETRIES} retries. {last_error}"
+                            logger.error(f"Failed after {LMSTUDIO_MAX_RETRIES} attempts")
+                            yield f"Error: LMStudio API error after {LMSTUDIO_MAX_RETRIES} retries. {last_error}"
                             return
 
                     else:
@@ -276,16 +269,16 @@ async def stream_completion(
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             last_error = str(e)
 
-            if attempt < MAX_RETRIES - 1:
+            if attempt < LMSTUDIO_MAX_RETRIES - 1:
                 logger.warning(
-                    f"Connection error to LMStudio (attempt {attempt + 1}/{MAX_RETRIES}): {e}. "
+                    f"Connection error to LMStudio (attempt {attempt + 1}/{LMSTUDIO_MAX_RETRIES}): {e}. "
                     f"Retrying in {retry_delay:.1f}s..."
                 )
                 await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay * RETRY_BACKOFF_MULTIPLIER, MAX_RETRY_DELAY)
+                retry_delay = min(retry_delay * LMSTUDIO_RETRY_BACKOFF_MULTIPLIER, LMSTUDIO_MAX_RETRY_DELAY)
             else:
-                logger.error(f"Failed to connect to LMStudio after {MAX_RETRIES} attempts", exc_info=True)
-                yield f"Error: Could not connect to LMStudio after {MAX_RETRIES} retries. Please ensure it's running."
+                logger.error(f"Failed to connect to LMStudio after {LMSTUDIO_MAX_RETRIES} attempts", exc_info=True)
+                yield f"Error: Could not connect to LMStudio after {LMSTUDIO_MAX_RETRIES} retries. Please ensure it's running."
                 return
 
         except Exception as e:

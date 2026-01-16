@@ -13,28 +13,13 @@ from config.constants import MSG_PROCESSING_ATTACHMENTS, MSG_LOADING_CONTEXT, MS
 
 from utils.text_utils import remove_thinking_tags, is_inside_thinking_tags, split_message
 from utils.logging_config import guild_debug_log
-from utils.settings_manager import (
-    is_tts_enabled_for_guild,
-    get_guild_voice,
-    is_search_enabled,
-)
-from utils.stats_manager import (
-    add_message_to_history,
-    update_stats,
-    is_context_loaded,
-    set_context_loaded,
-    get_conversation_history,
-)
+from utils.settings_manager import is_tts_enabled_for_guild, get_guild_voice, is_search_enabled
+from utils.stats_manager import add_message_to_history, update_stats, is_context_loaded, set_context_loaded, get_conversation_history
 
-from services.lmstudio import build_api_messages, stream_completion
+from services.lmstudio import stream_completion
 from services.content_fetch import process_message_urls
 from services.file_processor import process_all_attachments
-from services.search import (
-    should_trigger_search,
-    check_search_cooldown,
-    get_web_context,
-    update_search_cooldown,
-)
+from services.search import should_trigger_search, check_search_cooldown, get_web_context, update_search_cooldown
 from services.tts import text_to_speech
 
 from commands.voice import get_voice_client

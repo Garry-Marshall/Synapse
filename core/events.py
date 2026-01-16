@@ -5,42 +5,21 @@ Handles on_ready, on_message, and on_voice_state_update events.
 import discord
 import logging
 import time
-import os
-import threading
 
 from config.settings import ALLOW_DMS, IGNORE_BOTS, CONTEXT_MESSAGES, ENABLE_TTS, LMSTUDIO_URL
-from config.constants import (
-    DEFAULT_SYSTEM_PROMPT,
-    MAX_MESSAGE_EDITS_PER_WINDOW,
-    MESSAGE_EDIT_WINDOW,
-    STREAM_UPDATE_INTERVAL,
-    DISCORD_SAFE_DISPLAY_LIMIT,
-    MAX_SYSTEM_PROMPT_CONTEXT,
-    SYSTEM_PROMPT_TRUNCATE_TO,
-    SYSTEM_PROMPT_SAFE_TRUNCATE,
-    MSG_THINKING,
-    MSG_PROCESSING_ATTACHMENTS,
-    MSG_LOADING_CONTEXT,
-    MSG_SEARCHING_WEB,
-    MSG_FETCHING_URL,
-    MSG_BUILDING_CONTEXT,
-    MSG_WRITING_RESPONSE,
-)
+from config.constants import DEFAULT_SYSTEM_PROMPT, MAX_MESSAGE_EDITS_PER_WINDOW, MESSAGE_EDIT_WINDOW, STREAM_UPDATE_INTERVAL, MSG_THINKING, MSG_BUILDING_CONTEXT
 
-from utils.text_utils import estimate_tokens, remove_thinking_tags, is_inside_thinking_tags, split_message, count_message_tokens
+from utils.text_utils import estimate_tokens, remove_thinking_tags, count_message_tokens
 from utils.logging_config import log_effective_config, guild_debug_log
-from utils.settings_manager import get_guild_setting, is_tts_enabled_for_guild, get_guild_voice, get_guild_temperature, get_guild_max_tokens, is_search_enabled, is_channel_monitored, get_monitored_channels
-from utils.stats_manager import add_message_to_history, update_stats, is_context_loaded, set_context_loaded, get_conversation_history, cleanup_old_conversations
+from utils.settings_manager import get_guild_setting, get_guild_temperature, get_guild_max_tokens, is_search_enabled, is_channel_monitored, get_monitored_channels
+from utils.stats_manager import add_message_to_history, update_stats, get_conversation_history, cleanup_old_conversations
 
-from services.lmstudio import build_api_messages, stream_completion
-from services.content_fetch import process_message_urls
-from services.file_processor import process_all_attachments
-from services.search import should_trigger_search, check_search_cooldown, get_web_context, update_search_cooldown, cleanup_old_cooldowns
-from services.tts import text_to_speech
+from services.lmstudio import build_api_messages
+from services.search import should_trigger_search, check_search_cooldown, cleanup_old_cooldowns
 from services.message_processor import MessageProcessor
 
 from commands.model import initialize_models, get_selected_model
-from commands.voice import get_voice_client, remove_voice_client
+from commands.voice import remove_voice_client
 
 from commands import setup_all_commands
 
