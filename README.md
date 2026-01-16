@@ -54,7 +54,7 @@ discord_bot/
 ├── 📄 bot.py                    # Main entry point
 ├── 📄 requirements.txt          # Python dependencies
 ├── 📄 .env                      # Configuration
-├── 📄 jarvis_bot.db            # SQLite database (auto-created)
+├── 📄 jarvis_bot.db             # SQLite database (auto-created)
 │
 ├── 📂 config/                   # Settings and constants
 │   ├── settings.py
@@ -66,20 +66,21 @@ discord_bot/
 │   ├── text_utils.py
 │   ├── stats_manager.py
 │   ├── settings_manager.py
-│   ├── database.py             # SQLite database layer
+│   ├── database.py              # SQLite database layer
 │   ├── file_utils.py
 │   ├── permissions.py
 │   └── __init__.py
 │
-├── 📂 services/                 # Business logic
+├── 📂 services/                # Business logic
 │   ├── lmstudio.py             # LMStudio API integration
 │   ├── tts.py                  # Text-to-speech
 │   ├── search.py               # Web search (DDGS)
 │   ├── content_fetch.py        # URL content fetching
 │   ├── file_processor.py       # File processing
+│   ├── message_processor.py    # Message processing
 │   └── __init__.py
 │
-├── 📂 commands/                 # Slash commands
+├── 📂 commands/                # Slash commands
 │   ├── stats.py                # /stats command
 │   ├── status.py               # /status command
 │   ├── voice.py                # /join, /leave, /voice
@@ -90,7 +91,7 @@ discord_bot/
 │   ├── channel_management.py   # Channel monitoring commands
 │   └── __init__.py
 │
-└── 📂 core/                     # Bot core
+└── 📂 core/                    # Bot core
     ├── bot_instance.py         # Bot setup
     ├── events.py               # Event handlers
     ├── shutdown_handler.py     # Graceful shutdown
