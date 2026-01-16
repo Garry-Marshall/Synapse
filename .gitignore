@@ -51,6 +51,9 @@ guild_settings.json
 Logs/
 *.log
 
+# Generated images from ComfyUI
+out/
+
 # Temporary TTS audio files
 temp_tts_*.mp3
 

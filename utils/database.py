@@ -246,7 +246,11 @@ class Database:
                 stats['last_message_time'] = datetime.fromisoformat(stats['last_message_time'])
             stats['tool_usage'] = json.loads(stats['tool_usage']) if stats['tool_usage'] else {}
             stats['response_times'] = json.loads(stats['response_times']) if stats['response_times'] else []
-            
+
+            # Migration: Add comfyui_generation if missing (for existing databases)
+            if 'comfyui_generation' not in stats['tool_usage']:
+                stats['tool_usage']['comfyui_generation'] = 0
+
             return stats
     
     def create_conversation(self, conversation_id: int, guild_id: Optional[int] = None) -> None:
@@ -259,13 +263,13 @@ class Database:
         """
         with self._get_cursor() as cursor:
             cursor.execute("""
-                INSERT OR IGNORE INTO conversations 
+                INSERT OR IGNORE INTO conversations
                 (conversation_id, guild_id, start_time, tool_usage, response_times)
                 VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?)
             """, (
                 conversation_id,
                 guild_id,
-                json.dumps({"web_search": 0, "url_fetch": 0, "image_analysis": 0, "pdf_read": 0, "tts_voice": 0}),
+                json.dumps({"web_search": 0, "url_fetch": 0, "image_analysis": 0, "pdf_read": 0, "tts_voice": 0, "comfyui_generation": 0}),
                 json.dumps([])
             ))
         

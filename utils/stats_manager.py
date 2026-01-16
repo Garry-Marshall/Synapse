@@ -50,6 +50,7 @@ def create_empty_stats() -> dict:
             "image_analysis": 0,
             "pdf_read": 0,
             "tts_voice": 0,
+            "comfyui_generation": 0,
         }
     }
 
@@ -221,7 +222,8 @@ def get_stats_summary(conversation_id: int) -> str:
         f"🌐 URLs Fetched: {tool_usage.get('url_fetch', 0)}\n"
         f"🖼️ Images Analyzed: {tool_usage.get('image_analysis', 0)}\n"
         f"📄 PDFs Read: {tool_usage.get('pdf_read', 0)}\n"
-        f"🔊 Voice Replies: {tool_usage.get('tts_voice', 0)}"
+        f"🔊 Voice Replies: {tool_usage.get('tts_voice', 0)}\n"
+        f"🎨 Images Generated: {tool_usage.get('comfyui_generation', 0)}"
     )
     
     total_tokens = stats['prompt_tokens_estimate'] + stats['response_tokens_cleaned']

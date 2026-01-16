@@ -33,4 +33,6 @@ tiktoken>=0.5.1
 # Uncomment if needed
 # lxml>=6.0.2
 
-
+# ComfyUI Related Requirements
+Pillow==10.2.0
+websockets==11.0.3

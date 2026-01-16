@@ -6,7 +6,7 @@ import discord
 import logging
 import time
 
-from config.settings import ALLOW_DMS, IGNORE_BOTS, CONTEXT_MESSAGES, ENABLE_TTS, LMSTUDIO_URL
+from config.settings import ALLOW_DMS, IGNORE_BOTS, CONTEXT_MESSAGES, ENABLE_TTS, LMSTUDIO_URL, ENABLE_COMFYUI, COMFYUI_TRIGGERS
 from config.constants import DEFAULT_SYSTEM_PROMPT, MAX_MESSAGE_EDITS_PER_WINDOW, MESSAGE_EDIT_WINDOW, STREAM_UPDATE_INTERVAL, MSG_THINKING, MSG_BUILDING_CONTEXT
 
 from utils.text_utils import estimate_tokens, remove_thinking_tags, count_message_tokens
@@ -160,6 +160,9 @@ def setup_events(bot):
         logger.info(f'CONTEXT_MESSAGES setting: {CONTEXT_MESSAGES}')
         logger.info(f'ALLOW_DMS setting: {ALLOW_DMS}')
         logger.info(f'ENABLE_TTS setting: {ENABLE_TTS}')
+        logger.info(f'ENABLE_COMFYUI setting: {ENABLE_COMFYUI}')
+        if ENABLE_COMFYUI:
+            logger.info(f'ComfyUI triggers: {", ".join(COMFYUI_TRIGGERS)}')
 
         # Clean up old conversations on startup
         cleanup_old_conversations()
@@ -205,6 +208,24 @@ def setup_events(bot):
         # Ignore empty messages
         if not message.content.strip() and not message.attachments:
             return
+
+        # Check for ComfyUI trigger words if enabled
+        if ENABLE_COMFYUI and message.content.strip():
+            message_lower = message.content.lower()
+            for trigger in COMFYUI_TRIGGERS:
+                if trigger in message_lower:
+                    from services.comfyui import generate_and_send_image, extract_prompt_from_message
+                    guild_id = message.guild.id if not is_dm else None
+                    guild_debug_log(guild_id, "info", f"ComfyUI trigger word '{trigger}' detected in message")
+
+                    # Extract the prompt
+                    prompt = extract_prompt_from_message(message.content, trigger)
+                    if prompt:
+                        # Generate and send the image (this handles everything)
+                        await generate_and_send_image(message, prompt, guild_id)
+                        return  # Don't process as a normal message
+                    else:
+                        guild_debug_log(guild_id, "warning", f"No prompt found after trigger word '{trigger}'")
 
         # Send initial "thinking" status
         status_msg = await message.channel.send(MSG_THINKING)

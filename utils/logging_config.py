@@ -51,7 +51,8 @@ def setup_logging():
     logging.getLogger('urllib3').setLevel(logging.WARNING)
     logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
     logging.getLogger('trafilatura').setLevel(logging.WARNING)
-
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+    logging.getLogger('websockets').setLevel(logging.WARNING)
     
     logger = logging.getLogger(__name__)
     logger.info(f"Logging initialized. Log file: {log_filename}")

@@ -52,6 +52,10 @@ HIDE_THINKING=true
 ENABLE_TTS=true
 ALLTALK_URL=http://127.0.0.1:7851
 ALLTALK_VOICE=alloy
+
+# ComfyUI Settings
+ENABLE_COMFYUI=false
+COMFYUI_URL=127.0.0.1:8188
 """
         with open(env_file_path, 'w', encoding='utf-8') as f:
             f.write(default_env_content)
@@ -139,3 +143,15 @@ LOG_DIR = "Logs"
 # ============================================================================
 
 SEARCH_COOLDOWN = 10  # seconds between searches per guild
+
+
+# ============================================================================
+# COMFYUI SETTINGS
+# ============================================================================
+
+ENABLE_COMFYUI = os.getenv('ENABLE_COMFYUI', 'false').lower() == 'true'
+COMFYUI_URL = os.getenv('COMFYUI_URL', '127.0.0.1:8188')
+COMFYUI_WORKFLOW = os.getenv('COMFYUI_WORKFLOW', 'comfyUI-workflows/workflow_flux_api.json')
+COMFYUI_PROMPT_NODES = [str(x.strip()) for x in os.getenv('COMFYUI_PROMPT_NODES', '6').split(',') if x.strip()]
+COMFYUI_RAND_SEED_NODES = [str(x.strip()) for x in os.getenv('COMFYUI_RAND_SEED_NODES', '36').split(',') if x.strip()]
+COMFYUI_TRIGGERS = [x.strip().lower() for x in os.getenv('COMFYUI_TRIGGERS', 'imagine,generate').split(',') if x.strip()]
