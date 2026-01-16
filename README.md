@@ -1,6 +1,6 @@
 # 🤖 Discord AI Bot with LMStudio Integration
 
-A powerful, modular Discord bot with local AI integration via LMStudio, featuring web search, file processing, text-to-speech, and comprehensive per-server configuration with SQLite persistence.
+A powerful, modular Discord bot with local AI integration via LMStudio, featuring web search, file processing, text-to-speech, AI image generation, and comprehensive per-server configuration with SQLite persistence.
 
 **[Features](#-features)** • **[Quick Start](#-quick-start)** • **[Commands](#-slash-commands)** • **[Configuration](#️-configuration)** • **[Troubleshooting](#-troubleshooting)**
 ---
@@ -27,6 +27,12 @@ A powerful, modular Discord bot with local AI integration via LMStudio, featurin
 - ✅ **Auto-Disconnect** - Leaves when alone in voice channel
 - ✅ **Per-Server TTS Toggle** - Enable/disable TTS per guild
 
+### 🎨 Image Generation
+- ✅ **ComfyUI Integration** - Generate images using ComfyUI workflows
+- ✅ **Trigger Word Detection** - Use 'imagine' or 'generate' keywords
+- ✅ **Per-Server Toggle** - Enable/disable image generation per guild
+- ✅ **Customizable Workflows** - Use your own ComfyUI workflow JSON files
+
 ### ⚙️ Server Configuration
 - ✅ **Channel Monitoring** - Select specific channels for bot responses
 - ✅ **Custom System Prompts** - Per-server AI personality
@@ -35,6 +41,7 @@ A powerful, modular Discord bot with local AI integration via LMStudio, featurin
 - ✅ **Debug Logging** - Per-server debug modes with level control
 - ✅ **Web Search Toggle** - Enable/disable per server
 - ✅ **TTS Toggle** - Enable/disable TTS per server
+- ✅ **Image Generation Toggle** - Enable/disable ComfyUI per server
 
 ### 📊 Statistics & Management
 - ✅ **Conversation Stats** - Track tokens, response times, messages, tool usage
@@ -68,12 +75,14 @@ discord_bot/
 │   ├── settings_manager.py
 │   ├── database.py              # SQLite database layer
 │   ├── file_utils.py
+│   ├── image_utils.py           # ComfyUI integration
 │   ├── permissions.py
 │   └── __init__.py
 │
 ├── 📂 services/                # Business logic
 │   ├── lmstudio.py             # LMStudio API integration
 │   ├── tts.py                  # Text-to-speech
+│   ├── comfyui.py              # Image generation
 │   ├── search.py               # Web search (DDGS)
 │   ├── content_fetch.py        # URL content fetching
 │   ├── file_processor.py       # File processing
@@ -91,11 +100,14 @@ discord_bot/
 │   ├── channel_management.py   # Channel monitoring commands
 │   └── __init__.py
 │
-└── 📂 core/                    # Bot core
-    ├── bot_instance.py         # Bot setup
-    ├── events.py               # Event handlers
-    ├── shutdown_handler.py     # Graceful shutdown
-    └── __init__.py
+├── 📂 core/                    # Bot core
+│   ├── bot_instance.py         # Bot setup
+│   ├── events.py               # Event handlers
+│   ├── shutdown_handler.py     # Graceful shutdown
+│   └── __init__.py
+│
+└── 📂 comfyUI-workflows/       # ComfyUI workflow files
+    └── workflow_flux_api.json  # Example Flux workflow
 ```
 
 ---
@@ -110,6 +122,7 @@ discord_bot/
 | Discord Bot | Token Required | [Create Bot](https://discord.com/developers/applications) |
 | LMStudio | Latest | [Download](https://lmstudio.ai/) |
 | AllTalk TTS | Optional | [Download](https://github.com/erew123/alltalk_tts/tree/alltalkbeta) |
+| ComfyUI | Optional | [Download](https://github.com/comfyanonymous/ComfyUI) |
 
 ### Installation
 
@@ -170,6 +183,14 @@ discord_bot/
    ENABLE_TTS=true
    ALLTALK_URL=http://127.0.0.1:7851
    ALLTALK_VOICE=alloy
+
+   # ComfyUI settings (optional)
+   ENABLE_COMFYUI=true
+   COMFYUI_URL=127.0.0.1:8188
+   COMFYUI_WORKFLOW=comfyUI-workflows/workflow_flux_api.json
+   COMFYUI_PROMPT_NODES=6
+   COMFYUI_RAND_SEED_NODES=36
+   COMFYUI_TRIGGERS=imagine,generate
    ```
 
 5. **Run the Bot**
@@ -210,13 +231,24 @@ User: [uploads report.pdf] Summarize this document
 Bot: This document discusses quarterly sales performance...
 ```
 
+**Image Generation:**
+```
+User: imagine a sunset over mountains
+Bot: [Generating image...] ⏳ This may take a minute...
+Bot: [Shows generated image]
+```
+
 ### 🎮 Slash Commands
 
 #### 📊 Statistics & Monitoring
 
 - `/stats` - Display detailed conversation statistics
+  - Track total messages, tokens, response times
+  - Monitor tool usage (web searches, images analyzed, PDFs read, TTS replies, images generated)
 - `/context` - Show token usage and context window analysis
 - `/status` - Display bot health and system status
+  - Check LMStudio, AllTalk TTS, and ComfyUI connectivity
+  - View system resources and bot statistics
 - `/help` - Show all available commands
 
 #### ⚙️ Configuration (Admin Only)
@@ -229,6 +261,7 @@ Bot: This document discusses quarterly sales performance...
   - Set debug level (info/debug)
   - Toggle web search
   - Toggle TTS
+  - Toggle image generation (ComfyUI)
   - Clear conversation history
   - Reset to defaults
 
@@ -350,6 +383,27 @@ brew install ffmpeg
 # Download from: https://ffmpeg.org/download.html
 ```
 
+### ComfyUI image generation not working
+
+**Checklist:**
+- [ ] `ENABLE_COMFYUI=true` in `.env`
+- [ ] ComfyUI running at `COMFYUI_URL`
+- [ ] Image generation enabled in server via `/config`
+- [ ] Trigger words used ('imagine' or 'generate' by default)
+- [ ] ComfyUI workflow JSON file exists at configured path
+- [ ] ComfyUI has required models loaded (e.g., Flux)
+
+**Check ComfyUI status:**
+1. Open `http://127.0.0.1:8188` in browser
+2. Load your workflow manually to test
+3. Check ComfyUI console for errors
+4. Verify node IDs in `.env` match your workflow
+
+**Common issues:**
+- **"No images returned"**: Workflow failed - check ComfyUI console
+- **Missing models**: Download required models in ComfyUI
+- **Wrong node IDs**: Update `COMFYUI_PROMPT_NODES` and `COMFYUI_RAND_SEED_NODES` to match your workflow
+
 ---
 
 ## 🔒 Security Best Practices
@@ -433,9 +487,13 @@ This project is built on these amazing open-source projects:
 |:---:|:---:|:---:|
 | Discord API wrapper | Local LLM runtime | Text-to-Speech |
 
-| [DDGS](https://github.com/deedy5/ddgs) | [Trafilatura](https://github.com/adbar/trafilatura) | [PyPDF](https://pypdf.readthedocs.io/) |
+| [ComfyUI](https://github.com/comfyanonymous/ComfyUI) | [DDGS](https://github.com/deedy5/ddgs) | [Trafilatura](https://github.com/adbar/trafilatura) |
 |:---:|:---:|:---:|
-| Privacy-first search | Web scraping | PDF processing |
+| Image generation | Privacy-first search | Web scraping |
+
+| [PyPDF](https://pypdf.readthedocs.io/) |
+|:---:|
+| PDF processing |
 
 ---
 
