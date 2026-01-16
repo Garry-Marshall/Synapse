@@ -7,7 +7,7 @@ from discord import app_commands
 import logging
 
 from config.settings import ENABLE_TTS, ENABLE_COMFYUI, COMFYUI_TRIGGERS
-from utils.settings_manager import is_tts_enabled_for_guild
+from utils.settings_manager import is_tts_enabled_for_guild, is_comfyui_enabled_for_guild
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +23,10 @@ def setup_help_command(tree: app_commands.CommandTree):
     @tree.command(name="help", description="Show all available bot commands")
     async def help_command(interaction: discord.Interaction):
         """Display comprehensive help information about the bot."""
-        # Get guild ID for checking TTS status
+        # Get guild ID for checking TTS and ComfyUI status
         guild_id = interaction.guild.id if interaction.guild else None
         tts_enabled = ENABLE_TTS and (guild_id is None or is_tts_enabled_for_guild(guild_id))
+        comfyui_enabled = ENABLE_COMFYUI and (guild_id is None or is_comfyui_enabled_for_guild(guild_id))
 
         # Build help text dynamically
         help_text = """
@@ -68,11 +69,10 @@ def setup_help_command(tree: app_commands.CommandTree):
 • Settings are saved per server and persist across restarts
 • Temperature and max_tokens affect response style and length
 • The bot automatically searches the web when needed
-• Supported file types: images (PNG, JPG, GIF, WebP), PDFs, and text files
-"""
+• Supported file types: images (PNG, JPG, GIF, WebP), PDFs, and text files  """
 
-        # Add ComfyUI note if enabled
-        if ENABLE_COMFYUI:
+        # Add ComfyUI note if enabled (both globally and for this guild)
+        if comfyui_enabled:
             trigger_words = "', '".join(COMFYUI_TRIGGERS)
             help_text += f"• Use trigger words '{trigger_words}' to create images with ComfyUI\n"
 

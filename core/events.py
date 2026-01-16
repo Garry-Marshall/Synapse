@@ -11,7 +11,7 @@ from config.constants import DEFAULT_SYSTEM_PROMPT, MAX_MESSAGE_EDITS_PER_WINDOW
 
 from utils.text_utils import estimate_tokens, remove_thinking_tags, count_message_tokens
 from utils.logging_config import log_effective_config, guild_debug_log
-from utils.settings_manager import get_guild_setting, get_guild_temperature, get_guild_max_tokens, is_search_enabled, is_channel_monitored, get_monitored_channels
+from utils.settings_manager import get_guild_setting, get_guild_temperature, get_guild_max_tokens, is_search_enabled, is_channel_monitored, get_monitored_channels, is_comfyui_enabled_for_guild
 from utils.stats_manager import add_message_to_history, update_stats, get_conversation_history, cleanup_old_conversations
 
 from services.lmstudio import build_api_messages
@@ -209,13 +209,15 @@ def setup_events(bot):
         if not message.content.strip() and not message.attachments:
             return
 
-        # Check for ComfyUI trigger words if enabled
-        if ENABLE_COMFYUI and message.content.strip():
+        # Check for ComfyUI trigger words if enabled (globally and for this guild)
+        guild_id = message.guild.id if not is_dm else None
+        comfyui_enabled = ENABLE_COMFYUI and (guild_id is None or is_comfyui_enabled_for_guild(guild_id))
+
+        if comfyui_enabled and message.content.strip():
             message_lower = message.content.lower()
             for trigger in COMFYUI_TRIGGERS:
                 if trigger in message_lower:
                     from services.comfyui import generate_and_send_image, extract_prompt_from_message
-                    guild_id = message.guild.id if not is_dm else None
                     guild_debug_log(guild_id, "info", f"ComfyUI trigger word '{trigger}' detected in message")
 
                     # Extract the prompt
@@ -238,9 +240,6 @@ def setup_events(bot):
         }
 
         try:
-            # Get guild_id for settings (None for DMs)
-            guild_id = message.guild.id if not is_dm else None
-
             # Log message processing with guild debug system
             guild_debug_log(guild_id, "info", f"Processing message from {message.author.display_name} in conversation {conversation_id}")
             guild_debug_log(guild_id, "debug", f"Message content: '{message.content[:200]}{'...' if len(message.content) > 200 else ''}'")

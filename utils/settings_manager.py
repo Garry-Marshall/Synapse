@@ -14,7 +14,7 @@ from config.constants import (
     MAX_TEMPERATURE,
     MAX_SYSTEM_PROMPT_LENGTH,
 )
-from config.settings import ENABLE_TTS, ALLTALK_VOICE
+from config.settings import ENABLE_TTS, ALLTALK_VOICE, ENABLE_COMFYUI
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,11 @@ class SettingsManager:
             "type": str,
             "default": ALLTALK_VOICE,
             "validator": lambda v: v in ["alloy", "echo", "fable", "nova", "onyx", "shimmer"]
+        },
+        "comfyui_enabled": {
+            "type": bool,
+            "default": True,
+            "validator": None
         },
         "monitored_channels": {
             "type": list,
@@ -230,10 +235,18 @@ class SettingsManager:
         if guild_id is None:
             return False
         return bool(self.get(guild_id, "tts_enabled", True))
-    
+
     def get_voice(self, guild_id: Optional[int]) -> str:
         """Get selected TTS voice."""
         return str(self.get(guild_id, "selected_voice", ALLTALK_VOICE))
+
+    def is_comfyui_enabled(self, guild_id: Optional[int]) -> bool:
+        """Check if ComfyUI image generation is enabled."""
+        if not ENABLE_COMFYUI:
+            return False
+        if guild_id is None:
+            return False
+        return bool(self.get(guild_id, "comfyui_enabled", True))
 
 
 # Global instance
@@ -319,6 +332,11 @@ def is_tts_enabled_for_guild(guild_id: int) -> bool:
 def get_guild_voice(guild_id: Optional[int]) -> str:
     """Get TTS voice (compatibility function)."""
     return get_settings_manager().get_voice(guild_id)
+
+
+def is_comfyui_enabled_for_guild(guild_id: int) -> bool:
+    """Check if ComfyUI is enabled (compatibility function)."""
+    return get_settings_manager().is_comfyui_enabled(guild_id)
 
 
 def get_all_guild_settings(guild_id: int) -> dict:

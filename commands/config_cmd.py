@@ -15,10 +15,12 @@ from utils.settings_manager import (
     get_guild_max_tokens,
     is_debug_enabled,
     get_debug_level,
-    is_search_enabled
+    is_search_enabled,
+    is_comfyui_enabled_for_guild
 )
 from utils.stats_manager import get_conversation_history, clear_conversation_history, reset_guild_stats
 from utils.permissions import check_admin_permission, require_guild_context
+from config.settings import ENABLE_COMFYUI
 
 logger = logging.getLogger(__name__)
 
@@ -196,16 +198,28 @@ class ConfigView(discord.ui.View):
         debug_enabled = is_debug_enabled(self.guild_id)
         self.toggle_debug.label = f"Debug: {'ON' if debug_enabled else 'OFF'}"
         self.toggle_debug.style = discord.ButtonStyle.success if debug_enabled else discord.ButtonStyle.secondary
-        
+
         # Update search button
         search_enabled = is_search_enabled(self.guild_id)
         self.toggle_search.label = f"Web Search: {'ON' if search_enabled else 'OFF'}"
         self.toggle_search.style = discord.ButtonStyle.success if search_enabled else discord.ButtonStyle.secondary
-        
+
         # Update TTS button
         tts_enabled = get_guild_setting(self.guild_id, "tts_enabled", True)
         self.toggle_tts.label = f"TTS: {'ON' if tts_enabled else 'OFF'}"
         self.toggle_tts.style = discord.ButtonStyle.success if tts_enabled else discord.ButtonStyle.secondary
+
+        # Update ComfyUI button (only if globally enabled)
+        if ENABLE_COMFYUI:
+            comfyui_enabled = get_guild_setting(self.guild_id, "comfyui_enabled", True)
+            self.toggle_comfyui.label = f"Image Gen: {'ON' if comfyui_enabled else 'OFF'}"
+            self.toggle_comfyui.style = discord.ButtonStyle.success if comfyui_enabled else discord.ButtonStyle.secondary
+            self.toggle_comfyui.disabled = False
+        else:
+            # Hide button if ComfyUI is globally disabled
+            if hasattr(self, 'toggle_comfyui'):
+                self.toggle_comfyui.disabled = True
+                self.toggle_comfyui.style = discord.ButtonStyle.secondary
     
     def create_embed(self) -> discord.Embed:
         """Create embed showing current configuration."""
@@ -259,7 +273,16 @@ class ConfigView(discord.ui.View):
             value=f"{'ON' if debug_enabled else 'OFF'} (level: {debug_level.upper()})",
             inline=True
         )
-        
+
+        # Only show ComfyUI if globally enabled
+        if ENABLE_COMFYUI:
+            comfyui_enabled = get_guild_setting(self.guild_id, "comfyui_enabled", True)
+            embed.add_field(
+                name="🎨 Image Generation",
+                value="Enabled" if comfyui_enabled else "Disabled",
+                inline=True
+            )
+
         embed.set_footer(text="⚠️ Admin permissions required to make changes")
         
         return embed
@@ -350,18 +373,44 @@ class ConfigView(discord.ui.View):
         if not has_permission:
             await interaction.response.send_message(error_msg, ephemeral=True)
             return
-        
+
         current = get_guild_setting(self.guild_id, "tts_enabled", True)
         new_state = not current
-        
+
         set_guild_setting(self.guild_id, "tts_enabled", new_state)
         self.update_toggle_buttons()
-        
+
         embed = self.create_embed()
         await interaction.response.edit_message(embed=embed, view=self)
-        
+
         logger.info(f"TTS {'enabled' if new_state else 'disabled'} for guild {self.guild_id}")
-    
+
+    @discord.ui.button(label="Image Gen: ON", style=discord.ButtonStyle.success, emoji="🎨", row=1)
+    async def toggle_comfyui(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Check if ComfyUI is globally enabled
+        if not ENABLE_COMFYUI:
+            await interaction.response.send_message(
+                "❌ Image generation is globally disabled. Enable it in the .env configuration.",
+                ephemeral=True
+            )
+            return
+
+        has_permission, error_msg = check_admin_permission(interaction)
+        if not has_permission:
+            await interaction.response.send_message(error_msg, ephemeral=True)
+            return
+
+        current = get_guild_setting(self.guild_id, "comfyui_enabled", True)
+        new_state = not current
+
+        set_guild_setting(self.guild_id, "comfyui_enabled", new_state)
+        self.update_toggle_buttons()
+
+        embed = self.create_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+        logger.info(f"ComfyUI image generation {'enabled' if new_state else 'disabled'} for guild {self.guild_id}")
+
     @discord.ui.button(label="Clear Last Message", style=discord.ButtonStyle.danger, emoji="🧹", row=2)
     async def clear_last(self, interaction: discord.Interaction, button: discord.ui.Button):
         has_permission, error_msg = check_admin_permission(interaction)
@@ -434,7 +483,8 @@ class ConfigView(discord.ui.View):
             "debug_level",
             "search_enabled",
             "tts_enabled",
-            "selected_voice"
+            "selected_voice",
+            "comfyui_enabled"
         ]
 
         for setting in settings_to_clear:
