@@ -61,7 +61,7 @@ discord_bot/
 ├── 📄 bot.py                    # Main entry point
 ├── 📄 requirements.txt          # Python dependencies
 ├── 📄 .env                      # Configuration
-├── 📄 jarvis_bot.db             # SQLite database (auto-created)
+├── 📄 synapse_bot.db             # SQLite database (auto-created)
 │
 ├── 📂 config/                   # Settings and constants
 │   ├── settings.py
@@ -128,8 +128,8 @@ discord_bot/
 
 1. **Clone Repository**
    ```bash
-   git clone https://github.com/Garry-Marshall/Jarvis
-   cd Jarvis
+   git clone https://github.com/Garry-Marshall/Synapse
+   cd Synapse
    ```
 
 2. **Create Virtual Environment** (recommended)
@@ -157,7 +157,7 @@ discord_bot/
    DISCORD_BOT_TOKEN=your-discord-bot-token-here
    
    # Database file (auto-created)
-   DB_FILE=jarvis_bot.db
+   DB_FILE=synapse_bot.db
    
    # LMStudio API Configuration
    LMSTUDIO_URL=http://localhost:1234/v1/chat/completions
@@ -306,7 +306,7 @@ Example: "You always respond as a pirate."
 
 The bot uses SQLite for persistent storage:
 
-- **`jarvis_bot.db`** - Main database (auto-created)
+- **`synapse_bot.db`** - Main database (auto-created)
   - Guild settings (system prompts, temperature, etc.)
   - Conversation statistics
   - Monitored channels per guild
@@ -350,7 +350,7 @@ The bot uses SQLite for persistent storage:
 **Solution:**
 - Always run from project root:
   ```bash
-  cd Jarvis
+  cd Synapse
   python bot.py
   ```
 
@@ -499,8 +499,8 @@ This project is built on these amazing open-source projects:
 
 ## 📧 Support & Community
 
-- 🐛 **Bug Reports:** [GitHub Issues](https://github.com/Garry-Marshall/Jarvis/issues)
-- 💬 **Questions:** [GitHub Discussions](https://github.com/Garry-Marshall/Jarvis/discussions)
+- 🐛 **Bug Reports:** [GitHub Issues](https://github.com/Garry-Marshall/Synapse/issues)
+- 💬 **Questions:** [GitHub Discussions](https://github.com/Garry-Marshall/Synapse/discussions)
 
 ---
 

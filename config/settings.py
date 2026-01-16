@@ -20,7 +20,7 @@ def ensure_env_file():
 DISCORD_BOT_TOKEN=your-discord-bot-token-here
 
 # REQUIRED: database name
-DB_FILE=jarvis_bot.db
+DB_FILE=synapse_bot.db
 
 # LMStudio API Configuration
 LMSTUDIO_URL=http://localhost:1234/v1/chat/completions
@@ -82,7 +82,7 @@ DISCORD_TOKEN = os.getenv('DISCORD_BOT_TOKEN', 'your-discord-bot-token-here')
 # DATABASE CONFIGURATION
 # ============================================================================
 
-DB_FILE = os.getenv('DB_FILE', 'jarvis_bot.db')
+DB_FILE = os.getenv('DB_FILE', 'synapse_bot.db')
 
 # ============================================================================
 # LMSTUDIO API CONFIGURATION
