@@ -30,7 +30,7 @@ DEBUG_LEVEL=info # options: info, debug
 # Bot owner user IDs (comma-separated Discord user IDs)
 BOT_OWNER_IDS=123456789012345678,987654321098765432
 # Default bot admin role name
-# BOT_ADMIN_ROLE_NAME=Bot Admin
+BOT_ADMIN_ROLE_NAME=Bot Admin
 
 # LMStudio API Configuration
 LMSTUDIO_URL=http://localhost:1234/v1/chat/completions
