@@ -3,7 +3,11 @@ Configuration settings loaded from environment variables.
 All environment variable parsing and validation happens here.
 """
 import os
+import logging
 from dotenv import load_dotenv
+
+# Initialize logger for settings module
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -73,9 +77,8 @@ COMFYUI_TRIGGERS=imagine,generate
 """
         with open(env_file_path, 'w', encoding='utf-8') as f:
             f.write(default_env_content)
-        print(f"Created default .env file at {env_file_path}")
-        print("Please edit the .env file and add your DISCORD_BOT_TOKEN")
-        print("")
+        logger.info(f"Created default .env file at {env_file_path}")
+        logger.info("Please edit the .env file and add your DISCORD_BOT_TOKEN")
         # Reload after creating the file
         load_dotenv()
 
@@ -140,7 +143,7 @@ HIDE_THINKING = os.getenv('HIDE_THINKING', 'true').lower() == 'true'
 # TTS (TEXT-TO-SPEECH) SETTINGS
 # ============================================================================
 
-ENABLE_TTS = os.getenv('ENABLE_TTS', 'true').lower() == 'true'
+ENABLE_TTS = os.getenv('ENABLE_TTS', 'false').lower() == 'true'
 ALLTALK_URL = os.getenv('ALLTALK_URL', 'http://127.0.0.1:7851')
 ALLTALK_VOICE = os.getenv('ALLTALK_VOICE', 'alloy')
 

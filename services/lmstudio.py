@@ -16,6 +16,46 @@ from config.constants import DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, MIN_TEMPER
 logger = logging.getLogger(__name__)
 
 
+async def check_lmstudio_connection() -> tuple[bool, str]:
+    """
+    Check if LMStudio is reachable and has models loaded.
+
+    Returns:
+        Tuple of (is_connected, status_message)
+    """
+    try:
+        base_url = (
+            LMSTUDIO_URL.split('/v1/')[0]
+            if '/v1/' in LMSTUDIO_URL
+            else LMSTUDIO_URL.rsplit('/', 1)[0]
+        )
+        models_url = f"{base_url}/api/v1/models"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(models_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    all_models = data.get("models", [])
+                    loaded_models = [
+                        model["key"]
+                        for model in all_models
+                        if model.get("loaded_instances")
+                    ]
+
+                    if loaded_models:
+                        return True, f"✅ Connected to LMStudio with {len(loaded_models)} loaded model(s)"
+                    else:
+                        return False, "⚠️  LMStudio is running but no models are loaded. Please load a model in LMStudio."
+                else:
+                    return False, f"⚠️  LMStudio returned status {response.status}. Please check your LMStudio instance."
+
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        return False, f"⚠️  Cannot connect to LMStudio at {LMSTUDIO_URL}. Make sure LMStudio is running."
+    except Exception as e:
+        logger.error(f"Unexpected error checking LMStudio connection: {e}")
+        return False, f"⚠️  Error connecting to LMStudio: {str(e)}"
+
+
 async def fetch_available_models() -> List[str]:
     """
     Fetch available (loaded) models from LM Studio with retry logic.
