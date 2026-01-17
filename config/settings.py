@@ -26,11 +26,11 @@ DB_FILE=synapse_bot.db
 DEBUG=true
 DEBUG_LEVEL=info # options: info, debug
 
-# Bot owner user IDs (comma-separated)
-BOT_OWNER_IDS=123456789012345678
-
+# Permission system (optional but recommended)
+# Bot owner user IDs (comma-separated Discord user IDs)
+BOT_OWNER_IDS=123456789012345678,987654321098765432
 # Default bot admin role name
-BOT_ADMIN_ROLE_NAME=Bot Admin
+# BOT_ADMIN_ROLE_NAME=Bot Admin
 
 # LMStudio API Configuration
 LMSTUDIO_URL=http://localhost:1234/v1/chat/completions
