@@ -27,8 +27,10 @@ DISCORD_BOT_TOKEN=your-discord-bot-token-here
 DB_FILE=synapse_bot.db
 
 # Logging and Debug Settings
-DEBUG=true
-DEBUG_LEVEL=info # options: info, debug
+DEBUG_LEVEL=info # options: info (production), debug (development)
+# info: Console and files show INFO/WARNING/ERROR only
+# debug: Console shows INFO+, log files show all DEBUG messages
+ENABLE_CONVERSATION_LOG=false # Separate conversation log (only when DEBUG_LEVEL=debug)
 
 # Permission system (optional but recommended)
 # Bot owner user IDs (comma-separated Discord user IDs)
@@ -177,5 +179,5 @@ COMFYUI_TRIGGERS = [x.strip().lower() for x in os.getenv('COMFYUI_TRIGGERS', 'im
 # LOGGING/DEBUG SETTINGS
 # ============================================================================
 
-DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
 DEBUG_LEVEL = os.getenv('DEBUG_LEVEL', 'info').lower()  # 'info' or 'debug'
+ENABLE_CONVERSATION_LOG = os.getenv('ENABLE_CONVERSATION_LOG', 'false').lower() == 'true'

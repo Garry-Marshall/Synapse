@@ -14,7 +14,7 @@ from core.shutdown_handler import setup_shutdown_handlers
 from services.lmstudio import check_lmstudio_connection
 
 # Setup logging first
-setup_logging()
+log_file, conv_log_file = setup_logging()
 logger = logging.getLogger(__name__)
 
 

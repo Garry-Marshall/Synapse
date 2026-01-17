@@ -10,7 +10,7 @@ from config.settings import ALLOW_DMS, IGNORE_BOTS, CONTEXT_MESSAGES, ENABLE_TTS
 from config.constants import DEFAULT_SYSTEM_PROMPT, MAX_MESSAGE_EDITS_PER_WINDOW, MESSAGE_EDIT_WINDOW, STREAM_UPDATE_INTERVAL, MSG_THINKING, MSG_BUILDING_CONTEXT
 
 from utils.text_utils import estimate_tokens, remove_thinking_tags, count_message_tokens
-from utils.logging_config import log_effective_config, guild_debug_log
+from utils.logging_config import log_effective_config, guild_debug_log, log_conversation
 from utils.settings_manager import get_guild_setting, get_guild_temperature, get_guild_max_tokens, is_search_enabled, is_channel_monitored, get_monitored_channels, is_comfyui_enabled_for_guild
 from utils.stats_manager import add_message_to_history, update_stats, get_conversation_history, cleanup_old_conversations
 
@@ -259,6 +259,9 @@ def setup_events(bot):
             if text_files_content:
                 combined_message = f"{message.content}\n{text_files_content}" if message.content.strip() else text_files_content
 
+            # Log user message to conversation log
+            log_conversation(message.author.id, guild_id, combined_message, is_bot=False)
+
             # Load initial context if needed
             await MessageProcessor.load_conversation_context(
                 conversation_id, message.channel, status_msg, edit_tracker, guild_id
@@ -332,6 +335,9 @@ def setup_events(bot):
             # Process final response
             if response_text:
                 add_message_to_history(conversation_id, "assistant", response_text)
+
+                # Log bot response to conversation log
+                log_conversation(message.author.id, guild_id, response_text, is_bot=True)
 
                 # Calculate stats
                 final_response = remove_thinking_tags(response_text)
