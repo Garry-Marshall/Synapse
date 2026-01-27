@@ -100,7 +100,7 @@ async def generate_and_send_image(message: discord.Message, prompt: str, guild_i
         )
 
         # Track successful image generation in stats
-        update_stats(conversation_id, tool_used="comfyui_generation")
+        update_stats(conversation_id, tool_used="comfyui_generation", guild_id=guild_id)
 
         guild_debug_log(guild_id, "info", "Successfully sent generated image to channel")
 

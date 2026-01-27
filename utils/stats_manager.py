@@ -131,11 +131,12 @@ def update_stats(
     response_tokens_cleaned: int = 0,
     response_time: float = None,
     failed: bool = False,
-    tool_used: str = None
+    tool_used: str = None,
+    guild_id: Optional[int] = None
 ) -> None:
     """
     Update statistics for a conversation.
-    
+
     Args:
         conversation_id: Channel or DM ID
         prompt_tokens: Number of tokens in prompt
@@ -144,6 +145,7 @@ def update_stats(
         response_time: Time taken for response in seconds
         failed: Whether the request failed
         tool_used: Name of tool used (web_search, url_fetch, image_analysis, pdf_read, tts_voice)
+        guild_id: Guild ID (for creating new conversations with proper guild association)
     """
     db = _get_db()
     db.update_conversation(
@@ -153,7 +155,8 @@ def update_stats(
         response_tokens_cleaned=response_tokens_cleaned,
         response_time=response_time,
         failed=failed,
-        tool_used=tool_used
+        tool_used=tool_used,
+        guild_id=guild_id
     )
 
 
@@ -188,13 +191,113 @@ def reset_guild_stats(guild_id: int) -> int:
     return db.reset_guild_stats(guild_id)
 
 
+def get_guild_stats_summary(guild_id: int) -> str:
+    """
+    Get a formatted summary of aggregated statistics for all channels in a guild.
+
+    Args:
+        guild_id: Guild ID
+
+    Returns:
+        Formatted statistics string for all guild channels
+    """
+    db = _get_db()
+    conversations = db.get_guild_conversations(guild_id)
+
+    if not conversations:
+        return "📈 **Guild Statistics**\n\nNo conversations found in this guild."
+
+    # Aggregate stats across all conversations
+    total_messages = 0
+    total_prompt_tokens = 0
+    total_response_tokens_raw = 0
+    total_response_tokens_cleaned = 0
+    total_failed_requests = 0
+    all_response_times = []
+    aggregated_tool_usage = {
+        "web_search": 0,
+        "url_fetch": 0,
+        "image_analysis": 0,
+        "pdf_read": 0,
+        "tts_voice": 0,
+        "comfyui_generation": 0,
+    }
+    earliest_start = None
+    latest_message = None
+
+    for stats in conversations:
+        total_messages += stats['total_messages']
+        total_prompt_tokens += stats['prompt_tokens_estimate']
+        total_response_tokens_raw += stats['response_tokens_raw']
+        total_response_tokens_cleaned += stats['response_tokens_cleaned']
+        total_failed_requests += stats.get('failed_requests', 0)
+        all_response_times.extend(stats['response_times'])
+
+        # Aggregate tool usage
+        for tool, count in stats['tool_usage'].items():
+            if tool in aggregated_tool_usage:
+                aggregated_tool_usage[tool] += count
+
+        # Track earliest start time
+        if earliest_start is None or stats['start_time'] < earliest_start:
+            earliest_start = stats['start_time']
+
+        # Track latest message time
+        if stats['last_message_time']:
+            if latest_message is None or stats['last_message_time'] > latest_message:
+                latest_message = stats['last_message_time']
+
+    # Calculate average response time
+    avg_response_time = 0
+    if all_response_times:
+        avg_response_time = sum(all_response_times) / len(all_response_times)
+
+    # Calculate duration from earliest start to now
+    duration = datetime.now() - earliest_start if earliest_start else timedelta(0)
+    hours, remainder = divmod(int(duration.total_seconds()), 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    # Format last message time
+    last_msg = "Never"
+    if latest_message:
+        last_msg = latest_message.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Tool usage stats
+    tool_stats = (
+        f"\n\n**Tool Usage (All Channels):**\n"
+        f"🔍 Web Searches: {aggregated_tool_usage['web_search']}\n"
+        f"🌐 URLs Fetched: {aggregated_tool_usage['url_fetch']}\n"
+        f"🖼️ Images Analyzed: {aggregated_tool_usage['image_analysis']}\n"
+        f"📄 PDFs Read: {aggregated_tool_usage['pdf_read']}\n"
+        f"🔊 Voice Replies: {aggregated_tool_usage['tts_voice']}\n"
+        f"🎨 Images Generated: {aggregated_tool_usage['comfyui_generation']}"
+    )
+
+    total_tokens = total_prompt_tokens + total_response_tokens_cleaned
+
+    return f"""📈 **Guild Statistics (All Channels)**
+
+**Active Channels:** {len(conversations)}
+**Total Messages:** {total_messages}
+**Prompt Tokens (est):** {total_prompt_tokens:,}
+**Response Tokens (raw):** {total_response_tokens_raw:,}
+**Response Tokens (cleaned):** {total_response_tokens_cleaned:,}
+**Total Tokens (est):** {total_tokens:,}
+**Failed Requests:** {total_failed_requests}
+
+**Oldest Session:** {hours}h {minutes}m {seconds}s
+**Average Response Time:** {avg_response_time:.2f}s
+**Last Message:** {last_msg}{tool_stats}
+"""
+
+
 def get_stats_summary(conversation_id: int) -> str:
     """
     Get a formatted summary of statistics for display.
-    
+
     Args:
         conversation_id: Channel or DM ID
-        
+
     Returns:
         Formatted statistics string
     """

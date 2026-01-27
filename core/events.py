@@ -368,7 +368,8 @@ def setup_events(bot):
                     prompt_tokens=estimated_prompt_tokens,
                     response_tokens_raw=raw_token_count,
                     response_tokens_cleaned=cleaned_token_count,
-                    response_time=response_time
+                    response_time=response_time,
+                    guild_id=guild_id
                 )
 
                 guild_debug_log(
@@ -382,7 +383,7 @@ def setup_events(bot):
                 )
             else:
                 await status_msg.edit(content="Sorry, I couldn't generate a response.")
-                update_stats(conversation_id, failed=True)
+                update_stats(conversation_id, failed=True, guild_id=guild_id)
 
         except Exception as e:
             logger.error(f"Error in on_message: {e}", exc_info=True)
@@ -392,7 +393,7 @@ def setup_events(bot):
                 logger.error(f"Failed to edit error message: {edit_error}")
             except Exception as edit_error:
                 logger.error(f"Unexpected error editing status message: {edit_error}")
-            update_stats(conversation_id, failed=True)
+            update_stats(conversation_id, failed=True, guild_id=guild_id)
 
 
     @bot.event

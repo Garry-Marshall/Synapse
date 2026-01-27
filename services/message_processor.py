@@ -71,13 +71,13 @@ class MessageProcessor:
         # Track successful image analysis
         if images:
             for _ in images:
-                update_stats(conversation_id, tool_used="image_analysis")
+                update_stats(conversation_id, tool_used="image_analysis", guild_id=guild_id)
 
         # Track successful PDF reading
         if text_files_content:
             for attachment in message.attachments:
                 if attachment.filename.lower().endswith('.pdf'):
-                    update_stats(conversation_id, tool_used="pdf_read")
+                    update_stats(conversation_id, tool_used="pdf_read", guild_id=guild_id)
 
         return images, text_files_content, conversation_id
 
@@ -158,7 +158,7 @@ class MessageProcessor:
                     if web_context:
                         update_search_cooldown(guild_id)
                         web_search_triggered = True
-                        update_stats(conversation_id, tool_used="web_search")
+                        update_stats(conversation_id, tool_used="web_search", guild_id=guild_id)
                     else:
                         logger.warning("Web search returned no results")
 
@@ -169,7 +169,7 @@ class MessageProcessor:
 
             url_context = await process_message_urls(combined_message)
             if url_context:
-                update_stats(conversation_id, tool_used="url_fetch")
+                update_stats(conversation_id, tool_used="url_fetch", guild_id=guild_id)
 
         return web_context, url_context
 
@@ -333,7 +333,7 @@ class MessageProcessor:
                 audio_data = await text_to_speech(final_response, guild_voice)
 
                 if audio_data:
-                    update_stats(conversation_id, tool_used="tts_voice")
+                    update_stats(conversation_id, tool_used="tts_voice", guild_id=guild_id)
                     guild_debug_log(
                         guild_id,
                         "info",
@@ -400,7 +400,7 @@ class MessageProcessor:
         """
         if not response_text:
             await status_msg.edit(content="Sorry, I couldn't generate a response.")
-            update_stats(conversation_id, failed=True)
+            update_stats(conversation_id, failed=True, guild_id=guild_id)
             return
 
         # Process final response

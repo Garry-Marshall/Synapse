@@ -283,11 +283,12 @@ class Database:
         response_tokens_cleaned: int = 0,
         response_time: Optional[float] = None,
         failed: bool = False,
-        tool_used: Optional[str] = None
+        tool_used: Optional[str] = None,
+        guild_id: Optional[int] = None
     ) -> None:
         """
         Update conversation statistics.
-        
+
         Args:
             conversation_id: Conversation ID
             prompt_tokens: Tokens in prompt
@@ -296,13 +297,14 @@ class Database:
             response_time: Response time in seconds
             failed: Whether request failed
             tool_used: Name of tool used
+            guild_id: Guild ID (used when creating new conversations)
         """
         # Get current stats
         stats = self.get_conversation(conversation_id)
-        
+
         if not stats:
             # Create if doesn't exist
-            self.create_conversation(conversation_id)
+            self.create_conversation(conversation_id, guild_id)
             stats = self.get_conversation(conversation_id)
         
         # Update counters
@@ -384,6 +386,39 @@ class Database:
         with self._get_cursor() as cursor:
             cursor.execute("SELECT conversation_id FROM conversations")
             return [row['conversation_id'] for row in cursor.fetchall()]
+
+    def get_guild_conversations(self, guild_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all conversations for a specific guild.
+
+        Args:
+            guild_id: Guild ID
+
+        Returns:
+            List of conversation stat dictionaries
+        """
+        with self._get_cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM conversations WHERE guild_id = ?",
+                (guild_id,)
+            )
+
+            conversations = []
+            for row in cursor.fetchall():
+                stats = dict(row)
+                stats['start_time'] = datetime.fromisoformat(stats['start_time'])
+                if stats['last_message_time']:
+                    stats['last_message_time'] = datetime.fromisoformat(stats['last_message_time'])
+                stats['tool_usage'] = json.loads(stats['tool_usage']) if stats['tool_usage'] else {}
+                stats['response_times'] = json.loads(stats['response_times']) if stats['response_times'] else []
+
+                # Migration: Add comfyui_generation if missing
+                if 'comfyui_generation' not in stats['tool_usage']:
+                    stats['tool_usage']['comfyui_generation'] = 0
+
+                conversations.append(stats)
+
+            return conversations
 
     def reset_guild_stats(self, guild_id: int) -> int:
         """
