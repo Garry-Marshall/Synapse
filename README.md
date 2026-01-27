@@ -24,8 +24,10 @@ A powerful, modular Discord bot with local AI integration via LMStudio, featurin
 ### 🎙️ Voice & TTS
 - ✅ **Voice Channel Integration** - Bot joins and speaks in voice channels
 - ✅ **Multiple Voices** - 6 OpenAI-compatible voices via AllTalk TTS
+- ✅ **Moshi AI Voice** - Real-time AI voice conversations with custom prompts
 - ✅ **Auto-Disconnect** - Leaves when alone in voice channel
 - ✅ **Per-Server TTS Toggle** - Enable/disable TTS per guild
+- ✅ **Per-Server Moshi Prompts** - Customize Moshi's personality per server
 
 ### 🎨 Image Generation
 - ✅ **ComfyUI Integration** - Generate images using ComfyUI workflows
@@ -76,12 +78,17 @@ discord_bot/
 │   ├── database.py              # SQLite database layer
 │   ├── file_utils.py
 │   ├── image_utils.py           # ComfyUI integration
+│   ├── opus_transcoder.py       # Opus audio transcoding
+│   ├── ogg_opus_parser.py       # Ogg container parsing
+│   ├── ogg_opus_writer_v2.py    # Ogg container writer
 │   ├── permissions.py
 │   └── __init__.py
 │
 ├── 📂 services/                # Business logic
 │   ├── lmstudio.py             # LMStudio API integration
 │   ├── tts.py                  # Text-to-speech
+│   ├── moshi.py                # Moshi AI voice assistant
+│   ├── moshi_voice_handler.py  # Moshi Discord integration
 │   ├── comfyui.py              # Image generation
 │   ├── search.py               # Web search (DDGS)
 │   ├── content_fetch.py        # URL content fetching
@@ -122,6 +129,7 @@ discord_bot/
 | Discord Bot | Token Required | [Create Bot](https://discord.com/developers/applications) |
 | LMStudio | Latest | [Download](https://lmstudio.ai/) |
 | AllTalk TTS | Optional | [Download](https://github.com/erew123/alltalk_tts/tree/alltalkbeta) |
+| PersonaPlex | Optional | [Download](https://github.com/NVIDIA/personaplex) |
 | ComfyUI | Optional | [Download](https://github.com/comfyanonymous/ComfyUI) |
 
 ### Installation
@@ -193,6 +201,12 @@ discord_bot/
    ENABLE_TTS=false
    ALLTALK_URL=http://127.0.0.1:7851
    ALLTALK_VOICE=alloy
+
+   # Moshi Voice AI settings (optional)
+   ENABLE_MOSHI=false
+   MOSHI_URL=https://172.22.10.17:8998
+   MOSHI_VOICE=NATF2.pt  # Female voices: NATF0-3.pt, Male voices: NATM0-3.pt
+   MOSHI_TEXT_PROMPT=You are a helpful AI assistant.
 
    # ComfyUI settings (optional)
    ENABLE_COMFYUI=false
@@ -305,6 +319,13 @@ Bot: [Shows generated image]
 - `/voice` - Choose TTS voice (alloy, echo, fable, nova, onyx, shimmer)
 - `/join` - Join your current voice channel
 - `/leave` - Leave voice channel
+
+#### 🎙️ Moshi AI Voice
+
+- `/moshi start` - Start real-time AI voice conversation
+- `/moshi stop` - Stop AI voice conversation
+- `/moshi prompt` - Customize Moshi's system prompt (per-server)
+- `/moshi status` - Check Moshi service availability and connection status
 
 ---
 
@@ -432,6 +453,32 @@ brew install ffmpeg
 - **Missing models**: Download required models in ComfyUI
 - **Wrong node IDs**: Update `COMFYUI_PROMPT_NODES` and `COMFYUI_RAND_SEED_NODES` to match your workflow
 
+### Moshi AI Voice not working
+
+**Checklist:**
+- [ ] `ENABLE_MOSHI=true` in `.env`
+- [ ] Moshi server running at `MOSHI_URL`
+- [ ] Bot in voice channel (`/moshi start` automatically joins)
+- [ ] Bot has Connect, Speak, and Use Voice Activity permissions
+- [ ] `discord-ext-voice-recv` package installed (included in requirements.txt)
+
+**Check Moshi status:**
+1. Use `/moshi status` to verify server connectivity
+2. Test Moshi server manually at the configured URL
+3. Check bot logs for WebSocket connection errors
+4. Verify `MOSHI_URL` uses correct protocol (ws:// or wss://)
+
+**Common issues:**
+- **"Failed to start Moshi"**: Server not running or URL incorrect
+- **No audio response**: Check Moshi server logs for errors
+- **Audio quality issues**: Verify network latency and server performance
+- **Custom prompt not working**: Use `/moshi prompt` to set per-server prompt
+
+**Voice settings:**
+- **Female voices**: NATF0.pt, NATF1.pt, NATF2.pt, NATF3.pt
+- **Male voices**: NATM0.pt, NATM1.pt, NATM2.pt, NATM3.pt
+- Configure via `MOSHI_VOICE` in `.env`
+
 ---
 
 ## 🔒 Security Best Practices
@@ -515,13 +562,13 @@ This project is built on these amazing open-source projects:
 |:---:|:---:|:---:|
 | Discord API wrapper | Local LLM runtime | Text-to-Speech |
 
-| [ComfyUI](https://github.com/comfyanonymous/ComfyUI) | [DDGS](https://github.com/deedy5/ddgs) | [Trafilatura](https://github.com/adbar/trafilatura) |
+| [PersonaPlex](https://github.com/NVIDIA/personaplex) | [ComfyUI](https://github.com/comfyanonymous/ComfyUI) | [DDGS](https://github.com/deedy5/ddgs) |
 |:---:|:---:|:---:|
-| Image generation | Privacy-first search | Web scraping |
+| AI Voice Assistant (Moshi) | Image generation | Privacy-first search |
 
-| [PyPDF](https://pypdf.readthedocs.io/) |
-|:---:|
-| PDF processing |
+| [Trafilatura](https://github.com/adbar/trafilatura) | [PyPDF](https://pypdf.readthedocs.io/) | [discord-ext-voice-recv](https://github.com/imayhaveborkedit/discord-ext-voice-recv) |
+|:---:|:---:|:---:|
+| Web scraping | PDF processing | Voice receiving |
 
 ---
 

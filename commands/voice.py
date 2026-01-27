@@ -4,10 +4,11 @@ Handles /join, /leave, and /voice commands.
 """
 import discord
 from discord import app_commands
+from discord.ext import voice_recv
 from typing import Dict, Optional
 import logging
 
-from config.settings import ENABLE_TTS
+from config.settings import ENABLE_TTS, ENABLE_MOSHI, MOSHI_TEXT_PROMPT
 from config.constants import (
     AVAILABLE_VOICES,
     VOICE_DESCRIPTIONS,
@@ -23,7 +24,9 @@ from config.constants import (
     MSG_MOVED_VOICE,
     MSG_FAILED_TO_JOIN_VOICE,
 )
-from utils.settings_manager import is_tts_enabled_for_guild, get_guild_voice, set_guild_setting
+from utils.settings_manager import is_tts_enabled_for_guild, get_guild_voice, set_guild_setting, get_guild_setting
+from services.moshi_voice_handler import start_moshi_voice, stop_moshi_voice, is_moshi_active
+from services.moshi import is_moshi_available
 
 
 logger = logging.getLogger(__name__)
@@ -71,26 +74,57 @@ class VoiceSelectDropdown(discord.ui.Select):
             )
             for voice in AVAILABLE_VOICES
         ]
-        
+
         super().__init__(
             placeholder="Select a voice...",
             min_values=1,
             max_values=1,
             options=options
         )
-    
+
     async def callback(self, interaction: discord.Interaction):
         selected_voice = self.values[0]
         guild_id = interaction.guild.id
-        
+
         # Save to persistent guild settings
         set_guild_setting(guild_id, "selected_voice", selected_voice)
-        
+
         await interaction.response.send_message(
             MSG_VOICE_CHANGED.format(selected_voice=selected_voice),
             ephemeral=True
         )
         logger.info(f"Voice changed to '{selected_voice}' in guild {guild_id} ({interaction.guild.name})")
+
+
+class MoshiPromptModal(discord.ui.Modal, title='Customize Moshi Prompt'):
+    """Modal dialog for customizing Moshi's system prompt."""
+
+    prompt_input = discord.ui.TextInput(
+        label='System Prompt',
+        style=discord.TextStyle.paragraph,
+        placeholder='Enter the system prompt for Moshi...',
+        required=True,
+        max_length=1000,
+        default='You are a helpful AI assistant.'
+    )
+
+    def __init__(self, current_prompt: str):
+        super().__init__()
+        self.prompt_input.default = current_prompt
+
+    async def on_submit(self, interaction: discord.Interaction):
+        guild_id = interaction.guild.id
+        new_prompt = self.prompt_input.value
+
+        # Save to persistent guild settings
+        set_guild_setting(guild_id, "moshi_prompt", new_prompt)
+
+        await interaction.response.send_message(
+            f"✅ Moshi prompt updated successfully!\n\n**New prompt:**\n```\n{new_prompt}\n```\n\n"
+            f"The new prompt will be used the next time you start Moshi.",
+            ephemeral=True
+        )
+        logger.info(f"Moshi prompt changed in guild {guild_id} ({interaction.guild.name})")
 
 
 def setup_voice_commands(tree: app_commands.CommandTree):
@@ -145,12 +179,17 @@ def setup_voice_commands(tree: app_commands.CommandTree):
                 ephemeral=True
             )
             return
-        
+
         guild_id = interaction.guild.id
         if guild_id not in voice_clients or not voice_clients[guild_id].is_connected():
             await interaction.response.send_message(MSG_NOT_IN_VOICE, ephemeral=True)
             return
-        
+
+        # Stop Moshi if active
+        if is_moshi_active(guild_id):
+            await stop_moshi_voice(guild_id)
+            logger.info(f"Stopped Moshi when leaving voice in guild {guild_id}")
+
         channel_name = voice_clients[guild_id].channel.name if voice_clients[guild_id].channel else "unknown"
         await voice_clients[guild_id].disconnect()
         del voice_clients[guild_id]
@@ -188,6 +227,165 @@ def setup_voice_commands(tree: app_commands.CommandTree):
             view=view,
             ephemeral=True
         )
+
+    @tree.command(name='moshi', description='Start or stop Moshi AI voice conversation')
+    @app_commands.describe(action="Start or stop Moshi voice AI, or customize the prompt")
+    @app_commands.choices(action=[
+        app_commands.Choice(name="Start", value="start"),
+        app_commands.Choice(name="Stop", value="stop"),
+        app_commands.Choice(name="Status", value="status"),
+        app_commands.Choice(name="Prompt", value="prompt")
+    ])
+    async def moshi_command(interaction: discord.Interaction, action: app_commands.Choice[str]):
+        # Quick validation that doesn't need deferring
+        if not interaction.guild:
+            await interaction.response.send_message(MSG_SERVER_ONLY, ephemeral=True)
+            return
+
+        if not ENABLE_MOSHI:
+            await interaction.response.send_message(
+                "❌ Moshi AI is not enabled. Please enable it in the configuration.",
+                ephemeral=True
+            )
+            return
+
+        guild_id = interaction.guild.id
+
+        # Handle prompt customization
+        if action.value == "prompt":
+            # Get current prompt from guild settings or use default
+            current_prompt = get_guild_setting(guild_id, "moshi_prompt", MOSHI_TEXT_PROMPT)
+
+            # Show modal for prompt input
+            modal = MoshiPromptModal(current_prompt)
+            await interaction.response.send_modal(modal)
+            return
+
+        # Status is quick - no defer needed
+        if action.value == "status":
+            is_active_now = is_moshi_active(guild_id)
+
+            # Defer before the network call
+            await interaction.response.defer(ephemeral=True)
+
+            is_available = await is_moshi_available()
+
+            status_msg = "**Moshi AI Status:**\n"
+            status_msg += f"• Service Available: {'✅ Yes' if is_available else '❌ No'}\n"
+            status_msg += f"• Active in this server: {'✅ Yes' if is_active_now else '❌ No'}"
+
+            if is_active_now:
+                voice_client = get_voice_client(guild_id)
+                if voice_client and voice_client.channel:
+                    status_msg += f"\n• Channel: {voice_client.channel.name}"
+
+            await interaction.followup.send(status_msg, ephemeral=True)
+            return
+
+        if action.value == "start":
+            # Quick checks first
+            if is_moshi_active(guild_id):
+                await interaction.response.send_message(
+                    "⚠️ Moshi is already active in this server. Use `/moshi stop` first.",
+                    ephemeral=True
+                )
+                return
+
+            if not interaction.user.voice or not interaction.user.voice.channel:
+                await interaction.response.send_message(MSG_NEED_VOICE_CHANNEL, ephemeral=True)
+                return
+
+            voice_channel = interaction.user.voice.channel
+
+            # Try to defer, but continue even if interaction expired
+            deferred = False
+            try:
+                await interaction.response.defer(ephemeral=True)
+                deferred = True
+            except discord.errors.NotFound:
+                logger.warning("Interaction expired before defer, starting Moshi anyway")
+            except Exception as e:
+                logger.warning(f"Could not defer interaction: {e}")
+
+            try:
+                voice_client = voice_clients.get(guild_id)
+
+                if not voice_client or not voice_client.is_connected():
+                    voice_client = await voice_channel.connect(cls=voice_recv.VoiceRecvClient)
+                    voice_clients[guild_id] = voice_client
+                    logger.info(f"Joined voice channel '{voice_channel.name}' for Moshi in guild {guild_id}")
+                elif voice_client.channel.id != voice_channel.id:
+                    await voice_client.move_to(voice_channel)
+                    logger.info(f"Moved to voice channel '{voice_channel.name}' for Moshi in guild {guild_id}")
+
+                success = await start_moshi_voice(guild_id, voice_client)
+
+                if success:
+                    logger.info(f"Moshi voice started in guild {guild_id}")
+                    if deferred:
+                        await interaction.followup.send(
+                            f"🎙️ Moshi AI voice conversation started in **{voice_channel.name}**!\n"
+                            f"You can now speak and Moshi will respond with voice.",
+                            ephemeral=True
+                        )
+                else:
+                    logger.error(f"Failed to start Moshi in guild {guild_id}")
+                    if deferred:
+                        await interaction.followup.send(
+                            "❌ Failed to start Moshi. Please check that Moshi is running and accessible.",
+                            ephemeral=True
+                        )
+
+            except Exception as e:
+                logger.error(f"Error starting Moshi in guild {guild_id}: {e}", exc_info=True)
+                if deferred:
+                    try:
+                        await interaction.followup.send(
+                            f"❌ Error starting Moshi: {str(e)}",
+                            ephemeral=True
+                        )
+                    except:
+                        pass
+
+        elif action.value == "stop":
+            # Quick check
+            if not is_moshi_active(guild_id):
+                await interaction.response.send_message(
+                    "⚠️ Moshi is not currently active in this server.",
+                    ephemeral=True
+                )
+                return
+
+            # Try to defer, but if interaction expired, still perform the stop
+            deferred = False
+            try:
+                await interaction.response.defer(ephemeral=True)
+                deferred = True
+            except discord.errors.NotFound:
+                logger.warning("Interaction expired before defer, stopping Moshi anyway")
+            except Exception as e:
+                logger.warning(f"Could not defer interaction: {e}")
+
+            try:
+                await stop_moshi_voice(guild_id)
+                logger.info(f"Moshi voice stopped for guild {guild_id}")
+
+                if deferred:
+                    await interaction.followup.send(
+                        "🛑 Moshi AI voice conversation stopped.",
+                        ephemeral=True
+                    )
+
+            except Exception as e:
+                logger.error(f"Error stopping Moshi in guild {guild_id}: {e}", exc_info=True)
+                if deferred:
+                    try:
+                        await interaction.followup.send(
+                            f"❌ Error stopping Moshi: {str(e)}",
+                            ephemeral=True
+                        )
+                    except:
+                        pass
 
 
 def get_voice_client(guild_id: int) -> Optional[discord.VoiceClient]:

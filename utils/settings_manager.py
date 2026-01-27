@@ -14,7 +14,7 @@ from config.constants import (
     MAX_TEMPERATURE,
     MAX_SYSTEM_PROMPT_LENGTH,
 )
-from config.settings import ENABLE_TTS, ALLTALK_VOICE, ENABLE_COMFYUI
+from config.settings import ENABLE_TTS, ALLTALK_VOICE, ENABLE_COMFYUI, MOSHI_TEXT_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,11 @@ class SettingsManager:
             "type": str,
             "default": ALLTALK_VOICE,
             "validator": lambda v: v in ["alloy", "echo", "fable", "nova", "onyx", "shimmer"]
+        },
+        "moshi_prompt": {
+            "type": str,
+            "default": MOSHI_TEXT_PROMPT,
+            "validator": lambda v: len(v) <= 1000 if v else True
         },
         "comfyui_enabled": {
             "type": bool,

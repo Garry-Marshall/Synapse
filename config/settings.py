@@ -69,6 +69,12 @@ ENABLE_TTS=false
 ALLTALK_URL=http://127.0.0.1:7851
 ALLTALK_VOICE=alloy
 
+# Moshi Voice AI Settings (optional)
+ENABLE_MOSHI=false
+MOSHI_URL=https://172.22.10.17:8998
+MOSHI_VOICE=NATF2.pt  # Female voices: NATF0-3.pt, Male voices: NATM0-3.pt
+MOSHI_TEXT_PROMPT=You are a helpful AI assistant.
+
 # ComfyUI Settings (optional)
 ENABLE_COMFYUI=false
 COMFYUI_URL=127.0.0.1:8188
@@ -148,6 +154,15 @@ HIDE_THINKING = os.getenv('HIDE_THINKING', 'true').lower() == 'true'
 ENABLE_TTS = os.getenv('ENABLE_TTS', 'false').lower() == 'true'
 ALLTALK_URL = os.getenv('ALLTALK_URL', 'http://127.0.0.1:7851')
 ALLTALK_VOICE = os.getenv('ALLTALK_VOICE', 'alloy')
+
+# ============================================================================
+# MOSHI VOICE AI SETTINGS
+# ============================================================================
+
+ENABLE_MOSHI = os.getenv('ENABLE_MOSHI', 'false').lower() == 'true'
+MOSHI_URL = os.getenv('MOSHI_URL', 'https://172.22.10.17:8998')
+MOSHI_VOICE = os.getenv('MOSHI_VOICE', 'NATF2.pt')  # Voice prompt file
+MOSHI_TEXT_PROMPT = os.getenv('MOSHI_TEXT_PROMPT', 'You are a helpful AI assistant.')  # System/text prompt
 
 # ============================================================================
 # FILE PATHS

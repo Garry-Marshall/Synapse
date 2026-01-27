@@ -12,8 +12,9 @@ import sys
 from datetime import datetime, timedelta
 
 from config.constants import CPU_MEASUREMENT_INTERVAL
-from config.settings import LMSTUDIO_URL, ALLTALK_URL, ENABLE_TTS, ENABLE_COMFYUI, COMFYUI_URL
+from config.settings import LMSTUDIO_URL, ALLTALK_URL, ENABLE_TTS, ENABLE_MOSHI, MOSHI_URL, ENABLE_COMFYUI, COMFYUI_URL
 from services.lmstudio import fetch_available_models
+from services.moshi import is_moshi_available
 from commands.model import default_model, get_selected_model
 from utils.stats_manager import channel_stats, conversation_histories
 from utils.settings_manager import get_settings_manager
@@ -84,6 +85,31 @@ async def check_alltalk_health() -> tuple[bool, str, float]:
     except aiohttp.ClientError as e:
         response_time = (time.time() - start_time) * 1000
         return False, f"Connection failed: {type(e).__name__}", response_time
+    except Exception as e:
+        response_time = (time.time() - start_time) * 1000
+        return False, f"Error: {str(e)[:50]}", response_time
+
+
+async def check_moshi_health() -> tuple[bool, str, float]:
+    """
+    Check Moshi AI Voice service connectivity and response time.
+
+    Returns:
+        Tuple of (is_healthy, status_message, response_time_ms)
+    """
+    if not ENABLE_MOSHI:
+        return True, "Disabled (globally)", 0.0
+
+    start_time = time.time()
+    try:
+        is_available = await is_moshi_available()
+        response_time = (time.time() - start_time) * 1000
+
+        if is_available:
+            return True, "Connected", response_time
+        else:
+            return False, "Service unavailable", response_time
+
     except Exception as e:
         response_time = (time.time() - start_time) * 1000
         return False, f"Error: {str(e)[:50]}", response_time
@@ -233,6 +259,7 @@ def setup_status_command(tree: app_commands.CommandTree):
         # Check service health
         lm_healthy, lm_status, lm_time = await check_lmstudio_health()
         tt_healthy, tt_status, tt_time = await check_alltalk_health()
+        mo_healthy, mo_status, mo_time = await check_moshi_health()
         cf_healthy, cf_status, cf_time = await check_comfyui_health()
 
         # Fetch fresh model list
@@ -250,6 +277,8 @@ def setup_status_command(tree: app_commands.CommandTree):
         services_to_check = [lm_healthy]
         if tts_enabled_for_guild:
             services_to_check.append(tt_healthy)
+        if ENABLE_MOSHI:
+            services_to_check.append(mo_healthy)
         if comfyui_enabled_for_guild:
             services_to_check.append(cf_healthy)
 
@@ -263,6 +292,7 @@ def setup_status_command(tree: app_commands.CommandTree):
         # Service Status
         lm_emoji = "✅" if lm_healthy else "❌"
         tt_emoji = "✅" if tt_healthy else "❌"
+        mo_emoji = "✅" if mo_healthy else "❌"
         cf_emoji = "✅" if cf_healthy else "❌"
 
         services_value = (
@@ -277,6 +307,14 @@ def setup_status_command(tree: app_commands.CommandTree):
                 f"\n{tt_emoji} **AllTalk TTS**: {tt_status}\n"
                 f"└ Response: {tt_time:.0f}ms\n"
                 f"└ URL: `{ALLTALK_URL}`"
+            )
+
+        # Only add Moshi if enabled globally
+        if ENABLE_MOSHI:
+            services_value += (
+                f"\n{mo_emoji} **Moshi AI Voice**: {mo_status}\n"
+                f"└ Response: {mo_time:.0f}ms\n"
+                f"└ URL: `{MOSHI_URL}`"
             )
 
         # Only add ComfyUI if enabled for this guild
@@ -351,6 +389,8 @@ def setup_status_command(tree: app_commands.CommandTree):
             degraded_services = []
             if not tt_healthy and tts_enabled_for_guild:
                 degraded_services.append("TTS")
+            if not mo_healthy and ENABLE_MOSHI:
+                degraded_services.append("Moshi")
             if not cf_healthy and comfyui_enabled_for_guild:
                 degraded_services.append("ComfyUI")
             if degraded_services:

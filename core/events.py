@@ -6,7 +6,7 @@ import discord
 import logging
 import time
 
-from config.settings import ALLOW_DMS, IGNORE_BOTS, CONTEXT_MESSAGES, ENABLE_TTS, LMSTUDIO_URL, ENABLE_COMFYUI, COMFYUI_TRIGGERS
+from config.settings import ALLOW_DMS, IGNORE_BOTS, CONTEXT_MESSAGES, ENABLE_TTS, ENABLE_MOSHI, LMSTUDIO_URL, ENABLE_COMFYUI, COMFYUI_TRIGGERS
 from config.constants import DEFAULT_SYSTEM_PROMPT, MAX_MESSAGE_EDITS_PER_WINDOW, MESSAGE_EDIT_WINDOW, STREAM_UPDATE_INTERVAL, MSG_THINKING, MSG_BUILDING_CONTEXT
 
 from utils.text_utils import estimate_tokens, remove_thinking_tags, count_message_tokens
@@ -20,6 +20,7 @@ from services.message_processor import MessageProcessor
 
 from commands.model import initialize_models, get_selected_model
 from commands.voice import remove_voice_client
+from services.moshi_voice_handler import stop_moshi_voice, is_moshi_active
 
 from commands import setup_all_commands
 
@@ -160,6 +161,7 @@ def setup_events(bot):
         logger.info(f'CONTEXT_MESSAGES setting: {CONTEXT_MESSAGES}')
         logger.info(f'ALLOW_DMS setting: {ALLOW_DMS}')
         logger.info(f'ENABLE_TTS setting: {ENABLE_TTS}')
+        logger.info(f'ENABLE_MOSHI setting: {ENABLE_MOSHI}')
         logger.info(f'ENABLE_COMFYUI setting: {ENABLE_COMFYUI}')
         if ENABLE_COMFYUI:
             logger.info(f'ComfyUI triggers: {", ".join(COMFYUI_TRIGGERS)}')
@@ -405,6 +407,13 @@ def setup_events(bot):
             non_bot_members = [m for m in voice_client.channel.members if not m.bot]
 
             if len(non_bot_members) == 0:
+                guild_id = member.guild.id
                 logger.info(f"Bot left alone in VC {voice_client.channel.id}. Disconnecting...")
+
+                # Stop Moshi if active before disconnecting
+                if is_moshi_active(guild_id):
+                    logger.info(f"Stopping Moshi for guild {guild_id} before leaving VC")
+                    await stop_moshi_voice(guild_id)
+
                 await voice_client.disconnect()
-                remove_voice_client(member.guild.id)
+                remove_voice_client(guild_id)
