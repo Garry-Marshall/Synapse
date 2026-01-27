@@ -297,17 +297,20 @@ class MoshiClient:
 class MoshiSession:
     """Manages a Moshi voice conversation session for a Discord guild"""
 
-    def __init__(self, guild_id: int, voice_prompt: str = MOSHI_VOICE, text_prompt: str = MOSHI_TEXT_PROMPT):
+    def __init__(self, guild_id: int, voice_prompt: Optional[str] = None, text_prompt: Optional[str] = None):
         """
         Initialize Moshi session for a guild
 
         Args:
             guild_id: Discord guild ID
-            voice_prompt: Voice prompt file (default from settings)
-            text_prompt: System/text prompt (default from settings)
+            voice_prompt: Voice prompt file (defaults to MOSHI_VOICE from settings if not provided)
+            text_prompt: System/text prompt (defaults to MOSHI_TEXT_PROMPT from settings if not provided)
         """
         self.guild_id = guild_id
-        self.client = MoshiClient(voice_prompt=voice_prompt, text_prompt=text_prompt)
+        # Use provided values or fall back to defaults from settings
+        voice = voice_prompt if voice_prompt is not None else MOSHI_VOICE
+        prompt = text_prompt if text_prompt is not None else MOSHI_TEXT_PROMPT
+        self.client = MoshiClient(voice_prompt=voice, text_prompt=prompt)
         self.active = False
         self._audio_buffer = asyncio.Queue()
 
@@ -401,13 +404,14 @@ async def get_moshi_session(guild_id: int) -> Optional[MoshiSession]:
     return _active_sessions.get(guild_id)
 
 
-async def start_moshi_session(guild_id: int, text_prompt: Optional[str] = None) -> Optional[MoshiSession]:
+async def start_moshi_session(guild_id: int, text_prompt: Optional[str] = None, voice_prompt: Optional[str] = None) -> Optional[MoshiSession]:
     """
     Start new Moshi session for guild
 
     Args:
         guild_id: Discord guild ID
-        text_prompt: Optional custom text prompt (defaults to MOSHI_TEXT_PROMPT from settings)
+        text_prompt: Optional custom text prompt (defaults to MOSHI_TEXT_PROMPT from settings if not provided)
+        voice_prompt: Optional custom voice prompt (defaults to MOSHI_VOICE from settings if not provided)
 
     Returns:
         MoshiSession or None if failed to start
@@ -416,9 +420,8 @@ async def start_moshi_session(guild_id: int, text_prompt: Optional[str] = None) 
     if guild_id in _active_sessions:
         await stop_moshi_session(guild_id)
 
-    # Use custom prompt if provided, otherwise use default from settings
-    prompt = text_prompt if text_prompt is not None else MOSHI_TEXT_PROMPT
-    session = MoshiSession(guild_id, text_prompt=prompt)
+    # Use custom values if provided, otherwise MoshiSession will use defaults from settings
+    session = MoshiSession(guild_id, voice_prompt=voice_prompt, text_prompt=text_prompt)
     success = await session.start()
 
     if success:

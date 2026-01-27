@@ -8,7 +8,7 @@ from discord.ext import voice_recv
 from typing import Dict, Optional
 import logging
 
-from config.settings import ENABLE_TTS, ENABLE_MOSHI, MOSHI_TEXT_PROMPT
+from config.settings import ENABLE_TTS, ENABLE_MOSHI, MOSHI_TEXT_PROMPT, MOSHI_VOICE
 from config.constants import (
     AVAILABLE_VOICES,
     VOICE_DESCRIPTIONS,
@@ -24,7 +24,7 @@ from config.constants import (
     MSG_MOVED_VOICE,
     MSG_FAILED_TO_JOIN_VOICE,
 )
-from utils.settings_manager import is_tts_enabled_for_guild, get_guild_voice, set_guild_setting, get_guild_setting
+from utils.settings_manager import is_tts_enabled_for_guild, get_guild_voice, get_guild_moshi_voice, set_guild_setting, get_guild_setting
 from services.moshi_voice_handler import start_moshi_voice, stop_moshi_voice, is_moshi_active
 from services.moshi import is_moshi_available
 
@@ -33,6 +33,23 @@ logger = logging.getLogger(__name__)
 
 # Store voice channel connections per guild (Still in-memory as these are active sessions)
 voice_clients: Dict[int, discord.VoiceClient] = {}
+
+# Moshi voice options
+MOSHI_VOICES = [
+    "NATF0.pt", "NATF1.pt", "NATF2.pt", "NATF3.pt",  # Female voices
+    "NATM0.pt", "NATM1.pt", "NATM2.pt", "NATM3.pt"   # Male voices
+]
+
+MOSHI_VOICE_DESCRIPTIONS = {
+    "NATF0.pt": "Female voice 0",
+    "NATF1.pt": "Female voice 1",
+    "NATF2.pt": "Female voice 2",
+    "NATF3.pt": "Female voice 3",
+    "NATM0.pt": "Male voice 0",
+    "NATM1.pt": "Male voice 1",
+    "NATM2.pt": "Male voice 2",
+    "NATM3.pt": "Male voice 3",
+}
 
 
 def check_tts_enabled(guild_id: int) -> tuple[bool, Optional[str]]:
@@ -94,6 +111,48 @@ class VoiceSelectDropdown(discord.ui.Select):
             ephemeral=True
         )
         logger.info(f"Voice changed to '{selected_voice}' in guild {guild_id} ({interaction.guild.name})")
+
+
+class MoshiVoiceSelectView(discord.ui.View):
+    """View with dropdown for Moshi voice selection."""
+    def __init__(self, current_voice: str):
+        super().__init__(timeout=60)
+        self.add_item(MoshiVoiceSelectDropdown(current_voice))
+
+
+class MoshiVoiceSelectDropdown(discord.ui.Select):
+    """Dropdown menu for selecting Moshi AI voice."""
+    def __init__(self, current_voice: str):
+        options = [
+            discord.SelectOption(
+                label=voice.replace(".pt", ""),
+                value=voice,
+                description=MOSHI_VOICE_DESCRIPTIONS.get(voice, f"Voice: {voice}"),
+                default=(voice == current_voice)
+            )
+            for voice in MOSHI_VOICES
+        ]
+
+        super().__init__(
+            placeholder="Select a Moshi voice...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_voice = self.values[0]
+        guild_id = interaction.guild.id
+
+        # Save to persistent guild settings
+        set_guild_setting(guild_id, "moshi_voice", selected_voice)
+
+        await interaction.response.send_message(
+            f"✅ Moshi voice changed to **{selected_voice.replace('.pt', '')}**.\n\n"
+            f"The new voice will be used the next time you start Moshi.",
+            ephemeral=True
+        )
+        logger.info(f"Moshi voice changed to '{selected_voice}' in guild {guild_id} ({interaction.guild.name})")
 
 
 class MoshiPromptModal(discord.ui.Modal, title='Customize Moshi Prompt'):
@@ -229,11 +288,12 @@ def setup_voice_commands(tree: app_commands.CommandTree):
         )
 
     @tree.command(name='moshi', description='Start or stop Moshi AI voice conversation')
-    @app_commands.describe(action="Start or stop Moshi voice AI, or customize the prompt")
+    @app_commands.describe(action="Start or stop Moshi voice AI, or customize settings")
     @app_commands.choices(action=[
         app_commands.Choice(name="Start", value="start"),
         app_commands.Choice(name="Stop", value="stop"),
         app_commands.Choice(name="Status", value="status"),
+        app_commands.Choice(name="Voice", value="voice"),
         app_commands.Choice(name="Prompt", value="prompt")
     ])
     async def moshi_command(interaction: discord.Interaction, action: app_commands.Choice[str]):
@@ -250,6 +310,28 @@ def setup_voice_commands(tree: app_commands.CommandTree):
             return
 
         guild_id = interaction.guild.id
+
+        # Handle voice selection
+        if action.value == "voice":
+            # Get current voice from guild settings or use default
+            current_voice = get_guild_moshi_voice(guild_id)
+
+            # Build voice list display
+            voice_list = "**Female voices:**\n"
+            for voice in [v for v in MOSHI_VOICES if "NATF" in v]:
+                voice_list += f"• **{voice.replace('.pt', '')}** - {MOSHI_VOICE_DESCRIPTIONS.get(voice)}\n"
+
+            voice_list += "\n**Male voices:**\n"
+            for voice in [v for v in MOSHI_VOICES if "NATM" in v]:
+                voice_list += f"• **{voice.replace('.pt', '')}** - {MOSHI_VOICE_DESCRIPTIONS.get(voice)}\n"
+
+            view = MoshiVoiceSelectView(current_voice)
+            await interaction.response.send_message(
+                f"**Current Moshi voice:** {current_voice.replace('.pt', '')}\n\n{voice_list}\nSelect a new voice:",
+                view=view,
+                ephemeral=True
+            )
+            return
 
         # Handle prompt customization
         if action.value == "prompt":

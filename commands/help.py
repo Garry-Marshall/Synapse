@@ -64,6 +64,7 @@ def setup_help_command(tree: app_commands.CommandTree):
 ### 🎙️ Moshi AI Voice
 • `/moshi start` — Start AI voice conversation
 • `/moshi stop` — Stop AI voice conversation
+• `/moshi voice` — Select Moshi voice (8 options: NATF0-3, NATM0-3)
 • `/moshi prompt` — Customize Moshi's system prompt
 • `/moshi status` — Check Moshi service status
 """

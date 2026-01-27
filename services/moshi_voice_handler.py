@@ -15,7 +15,7 @@ from typing import Optional
 from services.moshi import MoshiSession, start_moshi_session, stop_moshi_session, get_moshi_session
 from utils.opus_transcoder import OpusTranscoder
 from utils.ogg_opus_writer_v2 import OggOpusWriterV2
-from utils.settings_manager import get_guild_setting
+from utils.settings_manager import get_guild_setting, get_guild_moshi_voice
 from config.settings import MOSHI_TEXT_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -305,20 +305,21 @@ class MoshiVoiceHandler:
         self.transcoder: Optional[OpusTranscoder] = None
         self.active = False
 
-    async def start(self, voice_client: discord.VoiceClient, custom_prompt: Optional[str] = None) -> bool:
+    async def start(self, voice_client: discord.VoiceClient, custom_prompt: Optional[str] = None, custom_voice: Optional[str] = None) -> bool:
         """
         Start Moshi voice conversation
 
         Args:
             voice_client: Discord voice client
             custom_prompt: Optional custom prompt for this session
+            custom_voice: Optional custom voice for this session
 
         Returns:
             bool: True if started successfully
         """
         try:
-            # Start Moshi session with custom prompt
-            self.moshi_session = await start_moshi_session(self.guild_id, custom_prompt)
+            # Start Moshi session with custom prompt and voice
+            self.moshi_session = await start_moshi_session(self.guild_id, custom_prompt, custom_voice)
             if not self.moshi_session:
                 logger.error("Failed to start Moshi session")
                 return False
@@ -411,11 +412,12 @@ async def start_moshi_voice(guild_id: int, voice_client: discord.VoiceClient) ->
     if guild_id in _active_handlers:
         await stop_moshi_voice(guild_id)
 
-    # Get guild-specific prompt or use default
+    # Get guild-specific prompt and voice or use defaults
     custom_prompt = get_guild_setting(guild_id, "moshi_prompt", MOSHI_TEXT_PROMPT)
+    custom_voice = get_guild_moshi_voice(guild_id)
 
     handler = MoshiVoiceHandler(guild_id)
-    success = await handler.start(voice_client, custom_prompt)
+    success = await handler.start(voice_client, custom_prompt, custom_voice)
 
     if success:
         _active_handlers[guild_id] = handler

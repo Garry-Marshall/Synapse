@@ -14,7 +14,7 @@ from config.constants import (
     MAX_TEMPERATURE,
     MAX_SYSTEM_PROMPT_LENGTH,
 )
-from config.settings import ENABLE_TTS, ALLTALK_VOICE, ENABLE_COMFYUI, MOSHI_TEXT_PROMPT
+from config.settings import ENABLE_TTS, ALLTALK_VOICE, ENABLE_COMFYUI, MOSHI_TEXT_PROMPT, MOSHI_VOICE
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,11 @@ class SettingsManager:
             "type": str,
             "default": MOSHI_TEXT_PROMPT,
             "validator": lambda v: len(v) <= 1000 if v else True
+        },
+        "moshi_voice": {
+            "type": str,
+            "default": MOSHI_VOICE,
+            "validator": lambda v: v in ["NATF0.pt", "NATF1.pt", "NATF2.pt", "NATF3.pt", "NATM0.pt", "NATM1.pt", "NATM2.pt", "NATM3.pt"]
         },
         "comfyui_enabled": {
             "type": bool,
@@ -245,6 +250,10 @@ class SettingsManager:
         """Get selected TTS voice."""
         return str(self.get(guild_id, "selected_voice", ALLTALK_VOICE))
 
+    def get_moshi_voice(self, guild_id: Optional[int]) -> str:
+        """Get selected Moshi voice."""
+        return str(self.get(guild_id, "moshi_voice", MOSHI_VOICE))
+
     def is_comfyui_enabled(self, guild_id: Optional[int]) -> bool:
         """Check if ComfyUI image generation is enabled."""
         if not ENABLE_COMFYUI:
@@ -337,6 +346,11 @@ def is_tts_enabled_for_guild(guild_id: int) -> bool:
 def get_guild_voice(guild_id: Optional[int]) -> str:
     """Get TTS voice (compatibility function)."""
     return get_settings_manager().get_voice(guild_id)
+
+
+def get_guild_moshi_voice(guild_id: Optional[int]) -> str:
+    """Get Moshi voice (compatibility function)."""
+    return get_settings_manager().get_moshi_voice(guild_id)
 
 
 def is_comfyui_enabled_for_guild(guild_id: int) -> bool:
