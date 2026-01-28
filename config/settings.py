@@ -69,9 +69,9 @@ ENABLE_TTS=false
 ALLTALK_URL=http://127.0.0.1:7851
 ALLTALK_VOICE=alloy
 
-# Moshi Voice AI Settings (optional)
+# PersonaPlex (Moshi) Voice AI Settings (optional)
 ENABLE_MOSHI=false
-MOSHI_URL=https://172.22.10.17:8998
+MOSHI_URL=https://127.0.0.1:8998
 MOSHI_VOICE=NATF2.pt  # Female voices: NATF0-3.pt, Male voices: NATM0-3.pt
 MOSHI_TEXT_PROMPT=You are a helpful AI assistant.
 

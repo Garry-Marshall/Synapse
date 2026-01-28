@@ -4,6 +4,7 @@ Provides search functionality with cooldown management.
 """
 import logging
 import time
+import asyncio
 from utils.logging_config import guild_debug_log
 from typing import Optional, Dict, List, Tuple
 from collections import defaultdict
@@ -26,6 +27,9 @@ from config.constants import (
     SEARCH_RATE_LIMIT_GUILD_COOLDOWN,
 )
 from config.settings import SEARCH_COOLDOWN
+
+# Import URL fetching capability
+from services.content_fetch import fetch_url_content
 
 
 logger = logging.getLogger(__name__)
@@ -104,6 +108,54 @@ def check_rate_limit(user_id: int, guild_id: int) -> Tuple[bool, str]:
     return True, ""
 
 
+def clean_search_query(query: str) -> str:
+    """
+    Clean the search query by removing common trigger phrases.
+
+    Args:
+        query: Original search query
+
+    Returns:
+        Cleaned query with trigger phrases removed
+    """
+    query_lower = query.lower()
+
+    # Phrases to strip from the beginning/middle of queries
+    strip_phrases = [
+        "search for ",
+        "search ",
+        "look up ",
+        "find information about ",
+        "find information on ",
+        "find info about ",
+        "find info on ",
+        "tell me about ",
+        "what is ",
+        "what's ",
+        "who is ",
+        "who's ",
+        "where is ",
+        "where's ",
+        "when is ",
+        "when's ",
+        "how do i ",
+        "how to ",
+        "can you search for ",
+        "can you look up ",
+        "please search for ",
+        "please look up ",
+    ]
+
+    cleaned = query
+    for phrase in strip_phrases:
+        # Try to remove from the start
+        if query_lower.startswith(phrase):
+            cleaned = query[len(phrase):]
+            break
+
+    return cleaned.strip()
+
+
 def cleanup_old_cooldowns() -> None:
     """Remove search cooldowns older than 1 hour to prevent memory leak."""
     current_time = time.time()
@@ -126,10 +178,12 @@ async def get_web_context(
     safesearch: str = "moderate",
     backend: str = "auto",  # Let DDGS choose best backend
     guild_id: Optional[int] = None,
-    user_id: Optional[int] = None  # NEW: for rate limiting
+    user_id: Optional[int] = None,  # NEW: for rate limiting
+    fetch_first_result: bool = True  # NEW: fetch full content from first result
 ) -> str:
     """
     Fetch search snippets from DDGS metasearch with rate limiting.
+    Optionally fetches full content from the first result.
 
     Args:
         query: Search query
@@ -139,6 +193,7 @@ async def get_web_context(
         backend: Search backend(s) to use (auto, duckduckgo, google, bing, etc.)
         guild_id: Guild ID for debug logging (optional)
         user_id: User ID for rate limiting (optional)
+        fetch_first_result: If True, fetch full content from first result instead of just snippets
 
     Returns:
         Formatted search results string, or empty string if failed
@@ -151,8 +206,15 @@ async def get_web_context(
             guild_debug_log(guild_id, "info", f"Search rate limit: {error_msg}")
             return f"\n{error_msg}\n"
 
+    # Clean the search query
+    original_query = query
+    query = clean_search_query(query)
+
+    if query != original_query:
+        guild_debug_log(guild_id, "debug", f"Cleaned query: '{original_query}' -> '{query}'")
+
     guild_debug_log(guild_id, "info", f"Web search initiated: '{query[:50]}...'")
-    guild_debug_log(guild_id, "debug", f"Search params: max_results={max_results}, region={region}, backend={backend}")
+    guild_debug_log(guild_id, "debug", f"Search params: max_results={max_results}, region={region}, backend={backend}, fetch_first={fetch_first_result}")
     
     try:
         # Initialize DDGS with timeout and optional proxy
@@ -171,22 +233,83 @@ async def get_web_context(
             logger.warning(f"No search results for: {query}")
             guild_debug_log(guild_id, "info", "Web search returned no results")
             return ""
-        
+
         guild_debug_log(guild_id, "info", f"Web search found {len(results)} result(s)")
-        
-        # Format results with source attribution
+
+        # If fetch_first_result is enabled, try fetching full content from results (with fallback)
+        if fetch_first_result and results:
+            # Try up to 3 results before falling back to snippets
+            max_attempts = min(3, len(results))
+
+            for attempt in range(max_attempts):
+                result = results[attempt]
+                url = result.get('href', '')
+                title = result.get('title', 'No title')
+
+                if not url:
+                    continue
+
+                attempt_msg = f"result #{attempt + 1}" if attempt > 0 else "top result"
+                guild_debug_log(guild_id, "info", f"Fetching full content from {attempt_msg}: {url}")
+
+                try:
+                    # Fetch with timeout (defaults to 10 seconds in fetch_url_content)
+                    full_content = await fetch_url_content(url)
+
+                    if full_content and not full_content.startswith("[URL access blocked"):
+                        guild_debug_log(guild_id, "info", f"Successfully fetched {len(full_content)} characters from {attempt_msg}")
+
+                        # Include other results as references (excluding the one we fetched)
+                        other_results = []
+                        for i, r in enumerate(results, 1):
+                            if i - 1 == attempt:  # Skip the result we fetched
+                                continue
+                            other_results.append(
+                                f"[{i}] {r.get('title', 'No title')}\n"
+                                f"URL: {r.get('href', 'No URL')}"
+                            )
+
+                        other_results_text = ""
+                        if other_results:
+                            other_results_text = f"\n\nOther relevant sources:\n" + "\n".join(other_results)
+
+                        return f"\n--- WEB SEARCH: FULL CONTENT FROM RESULT #{attempt + 1} ---\n" \
+                               f"Title: {title}\n" \
+                               f"URL: {url}\n\n" \
+                               f"{full_content}" \
+                               f"{other_results_text}\n" \
+                               f"--------------------------\n"
+                    else:
+                        if full_content.startswith("[URL access blocked"):
+                            guild_debug_log(guild_id, "warning", f"URL blocked: {full_content}")
+                        else:
+                            guild_debug_log(guild_id, "warning", f"Failed to fetch full content from {attempt_msg} (empty result)")
+                        # Continue to next result
+
+                except asyncio.TimeoutError:
+                    guild_debug_log(guild_id, "warning", f"Timeout fetching full content from {attempt_msg}")
+                    # Continue to next result
+                except Exception as e:
+                    logger.error(f"Exception fetching full content from {attempt_msg}: {e}", exc_info=False)
+                    guild_debug_log(guild_id, "warning", f"Error fetching full content from {attempt_msg}: {type(e).__name__}")
+                    # Continue to next result
+
+            # If we get here, all attempts failed
+            guild_debug_log(guild_id, "warning", f"All {max_attempts} fetch attempts failed, falling back to snippets")
+
+        # Default: Format results with source attribution (snippets only)
         formatted_results = []
         for i, r in enumerate(results, 1):
             title = r.get('title', 'No title')
             href = r.get('href', 'No URL')
             body = r.get('body', 'No description')
-            
+
             formatted_results.append(
                 f"[{i}] {title}\n"
                 f"URL: {href}\n"
                 f"Summary: {body}\n"
             )
-        
+
         context = "\n".join(formatted_results)
         return f"\n--- WEB SEARCH RESULTS ({len(results)} sources) ---\n{context}--------------------------\n"
             

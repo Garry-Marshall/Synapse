@@ -27,7 +27,7 @@ VOICE_DESCRIPTIONS = {
 # Triggers that indicate a web search might be needed
 SEARCH_TRIGGERS = [
     # Existing ones...
-    "search for", "look up", "find information", 
+    "search for", "look up", "find information", 'find info on',
     "current news", "current weather", "latest", 
     "what's happening", "what is happening",
     "who's currently", "who is currently", 

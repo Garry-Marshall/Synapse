@@ -4,7 +4,9 @@ Extracts main text content from web pages using Trafilatura.
 """
 import logging
 import ipaddress
+import asyncio
 from urllib.parse import urlparse
+from functools import partial
 
 import trafilatura
 from trafilatura.settings import use_config
@@ -13,6 +15,9 @@ from config.constants import MAX_URL_CHARS, DEFAULT_USER_AGENT
 from utils.text_utils import extract_urls
 
 logger = logging.getLogger(__name__)
+
+# Timeout for fetching URL content (in seconds)
+FETCH_TIMEOUT = 10
 
 # Blocked IP ranges for SSRF protection
 BLOCKED_IP_RANGES = [
@@ -80,12 +85,41 @@ def _validate_url_safety(url: str) -> tuple[bool, str]:
         return False, "Invalid URL format"
 
 
-async def fetch_url_content(url: str) -> str:
+def _fetch_url_sync(url: str) -> str:
     """
-    Fetch and clean the main text content from a specific URL with SSRF protection.
+    Synchronous helper to fetch URL content (to be run in executor).
 
     Args:
         url: URL to fetch
+
+    Returns:
+        Downloaded HTML content or empty string
+    """
+    try:
+        # Create a custom config for the User-Agent
+        new_config = use_config()
+        new_config.set(
+            "DEFAULT",
+            "USER_AGENT",
+            DEFAULT_USER_AGENT
+        )
+
+        # Fetch with trafilatura (blocking call)
+        downloaded = trafilatura.fetch_url(url, config=new_config)
+        return downloaded if downloaded else ""
+
+    except Exception as e:
+        logger.error(f"Error in sync fetch for {url}: {e}")
+        return ""
+
+
+async def fetch_url_content(url: str, timeout: int = FETCH_TIMEOUT) -> str:
+    """
+    Fetch and clean the main text content from a specific URL with SSRF protection and timeout.
+
+    Args:
+        url: URL to fetch
+        timeout: Timeout in seconds (default: 10)
 
     Returns:
         Extracted text content, or empty string if failed
@@ -97,21 +131,24 @@ async def fetch_url_content(url: str) -> str:
         return f"[URL access blocked: {error_msg}]"
 
     try:
-        # Create a custom config for the User-Agent
-        new_config = use_config()
-        new_config.set(
-            "DEFAULT",
-            "USER_AGENT",
-            DEFAULT_USER_AGENT
-        )
+        # Run the blocking fetch operation in an executor with timeout
+        loop = asyncio.get_event_loop()
+        fetch_func = partial(_fetch_url_sync, url)
 
-        # Pass the config object
-        downloaded = trafilatura.fetch_url(url, config=new_config)
+        try:
+            downloaded = await asyncio.wait_for(
+                loop.run_in_executor(None, fetch_func),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout ({timeout}s) fetching URL: {url}")
+            return ""
+
         if not downloaded:
             logger.warning(f"Failed to download content from {url}")
             return ""
 
-        # Extract main text content
+        # Extract main text content (this is fast, no need for executor)
         content = trafilatura.extract(
             downloaded,
             include_comments=False,
