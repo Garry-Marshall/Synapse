@@ -149,31 +149,64 @@ def count_message_tokens(messages: List[Dict[str, Any]]) -> int:
 def remove_thinking_tags(text: str) -> str:
     """
     Remove thinking tags and box markers from reasoning model outputs.
-    
+
     This removes:
-    - <think>...</think> tags
+    - <think>...</think> tags (with optional whitespace)
     - [THINK]...[/THINK] tags
     - <think /> self-closing tags
     - <|begin_of_box|> and <|end_of_box|> markers
-    
+
     Args:
         text: Input text with potential thinking tags
-        
+
     Returns:
         Cleaned text with thinking tags removed
     """
     if not HIDE_THINKING:
         return text
-    
-    # Remove standard tags
-    cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
-    cleaned = re.sub(r'\[THINK\].*?\[/THINK\]', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
-    cleaned = re.sub(r'<think\s*/>|\[THINK\s*/\]', '', cleaned, flags=re.IGNORECASE)
+
+    original_length = len(text)
+
+    # Remove standard tags with optional whitespace
+    # Pattern: <\s*think\s*>.*?</\s*think\s*> catches variations like < think >, <think >, etc.
+    cleaned = re.sub(r'<\s*think\s*>.*?</\s*think\s*>', '', text, flags=re.DOTALL | re.IGNORECASE)
+
+    # Remove bracket-style tags
+    cleaned = re.sub(r'\[\s*THINK\s*\].*?\[/\s*THINK\s*\]', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+
+    # Remove self-closing tags
+    cleaned = re.sub(r'<\s*think\s*/\s*>|\[\s*THINK\s*/\s*\]', '', cleaned, flags=re.IGNORECASE)
+
+    # Remove box markers
     cleaned = re.sub(r'<\|begin_of_box\|>|<\|end_of_box\|>', '', cleaned, flags=re.IGNORECASE)
-    
+
+    # Also remove any stray opening or closing tags that might be left over
+    cleaned = re.sub(r'<\s*/?think\s*>', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\[\s*/?THINK\s*\]', '', cleaned, flags=re.IGNORECASE)
+
+    # Aggressive cleanup: handle potential unicode lookalikes or encoding issues
+    # Some models might use full-width characters or other unicode variants
+    # Match any bracket-like + think + bracket-like pattern
+    cleaned = re.sub(r'[<\uff1c]\s*/?think\s*[>\uff1e]', '', cleaned, flags=re.IGNORECASE)
+
+    # Remove any remaining instances with greedy matching as last resort
+    # This catches malformed or broken tags
+    if 'think' in cleaned.lower():
+        # Try to remove anything that looks like a think tag, even if malformed
+        cleaned = re.sub(r'<[^>]*think[^>]*>.*?</[^>]*think[^>]*>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r'<[^>]*think[^>]*>', '', cleaned, flags=re.IGNORECASE)
+
     # Clean up whitespace: remove triple newlines and leading/trailing gaps
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
-    return cleaned.strip()
+    cleaned = cleaned.strip()
+
+    # Debug log if tags were found but not removed
+    if original_length > 0 and '<think' in text.lower() and '<think' in cleaned.lower():
+        logger.warning(f"⚠️ Thinking tags detected but not fully removed! Original length: {original_length}, Cleaned length: {len(cleaned)}")
+        logger.warning(f"Text sample with escaped chars: {repr(text[:200])}")
+        logger.warning(f"Cleaned sample: {repr(cleaned[:200])}")
+
+    return cleaned
 
 
 def is_inside_thinking_tags(text: str) -> bool:
@@ -257,35 +290,59 @@ def clean_discord_content(text: str) -> str:
 def split_message(text: str, max_length: int = DISCORD_MESSAGE_LIMIT) -> list[str]:
     """
     Split a long message into chunks that fit Discord's message limit.
-    
+    Handles edge cases like continuous strings without breaks.
+
     Args:
         text: Text to split
         max_length: Maximum length per chunk (default: Discord's 2000 char limit)
-        
+
     Returns:
-        List of text chunks
+        List of text chunks, each guaranteed to be <= max_length
     """
     if len(text) <= max_length:
         return [text]
-    
+
     chunks = []
     current_chunk = ""
-    
-    # Split by paragraphs first
+
+    # Split by paragraphs first (double newline)
     paragraphs = text.split('\n\n')
-    
+
     for paragraph in paragraphs:
         # If adding this paragraph would exceed limit, save current chunk
         if len(current_chunk) + len(paragraph) + 2 > max_length:
             if current_chunk:
                 chunks.append(current_chunk.strip())
                 current_chunk = ""
-            
+
             # If single paragraph is too long, split by sentences
             if len(paragraph) > max_length:
                 sentences = paragraph.split('. ')
                 for sentence in sentences:
-                    if len(current_chunk) + len(sentence) + 2 > max_length:
+                    # Handle sentences that are still too long
+                    if len(sentence) > max_length:
+                        # Split by words/whitespace
+                        words = sentence.split()
+                        for word in words:
+                            # Handle single words/tokens longer than max_length
+                            if len(word) > max_length:
+                                # Hard split at max_length as last resort
+                                if current_chunk:
+                                    chunks.append(current_chunk.strip())
+                                    current_chunk = ""
+
+                                # Break the long word into chunks
+                                for i in range(0, len(word), max_length):
+                                    chunks.append(word[i:i + max_length])
+
+                            elif len(current_chunk) + len(word) + 1 > max_length:
+                                if current_chunk:
+                                    chunks.append(current_chunk.strip())
+                                current_chunk = word + ' '
+                            else:
+                                current_chunk += word + ' '
+
+                    elif len(current_chunk) + len(sentence) + 2 > max_length:
                         if current_chunk:
                             chunks.append(current_chunk.strip())
                         current_chunk = sentence + '. '
@@ -295,9 +352,9 @@ def split_message(text: str, max_length: int = DISCORD_MESSAGE_LIMIT) -> list[st
                 current_chunk = paragraph + '\n\n'
         else:
             current_chunk += paragraph + '\n\n'
-    
+
     # Add remaining chunk
     if current_chunk.strip():
         chunks.append(current_chunk.strip())
-    
+
     return chunks

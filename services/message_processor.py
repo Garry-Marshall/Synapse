@@ -4,6 +4,7 @@ Handles the business logic for processing Discord messages and generating respon
 """
 import time
 import logging
+import asyncio
 from typing import Optional, Dict, Tuple
 
 import discord
@@ -237,10 +238,12 @@ class MessageProcessor:
         max_tokens: int,
         status_msg: discord.Message,
         edit_tracker: Dict,
-        guild_id: Optional[int]
-    ) -> Tuple[str, float]:
+        guild_id: Optional[int],
+        conversation_id: Optional[int] = None
+    ) -> Tuple[str, float, bool]:
         """
         Stream response from LLM and update status message.
+        Includes runaway generation detection.
 
         Args:
             api_messages: Messages to send to API
@@ -250,23 +253,52 @@ class MessageProcessor:
             status_msg: Status message to update
             edit_tracker: Edit tracking dict
             guild_id: Guild ID for logging
+            conversation_id: Conversation ID for clearing context on runaway
 
         Returns:
-            Tuple of (response_text, response_time)
+            Tuple of (response_text, response_time, was_runaway)
         """
         from core.events import update_status
         from config.constants import MESSAGE_EDIT_WINDOW, STREAM_UPDATE_INTERVAL, MAX_MESSAGE_EDITS_PER_WINDOW
+        from config.settings import RUNAWAY_DETECTION_ENABLED, RUNAWAY_MAX_TIME, RUNAWAY_MAX_TOKENS
+        from utils.stats_manager import clear_conversation_history
+        from utils.text_utils import estimate_tokens
 
         await update_status(status_msg, MSG_WRITING_RESPONSE, edit_tracker)
         guild_debug_log(guild_id, "info", "Streaming response from LMStudio")
 
         start_time = time.time()
         response_text = ""
+        was_runaway = False
 
         async for chunk in stream_completion(api_messages, model_to_use, temperature, max_tokens, guild_id):
             response_text += chunk
 
             current_time = time.time()
+            elapsed_time = current_time - start_time
+
+            # Runaway detection
+            if RUNAWAY_DETECTION_ENABLED:
+                token_count = estimate_tokens(response_text)
+
+                # Check if generation has gone on too long or too many tokens
+                if elapsed_time > RUNAWAY_MAX_TIME or token_count > RUNAWAY_MAX_TOKENS:
+                    guild_debug_log(
+                        guild_id, "warning",
+                        f"🚨 RUNAWAY GENERATION DETECTED! Time: {elapsed_time:.1f}s, Tokens: {token_count} | "
+                        f"Limits: {RUNAWAY_MAX_TIME}s, {RUNAWAY_MAX_TOKENS} tokens"
+                    )
+
+                    # Clear conversation history to prevent further issues
+                    if conversation_id:
+                        clear_conversation_history(conversation_id)
+                        guild_debug_log(guild_id, "info", "Automatically cleared conversation history due to runaway generation")
+
+                    was_runaway = True
+
+                    # Truncate the response
+                    response_text = response_text[:10000]  # Keep only first 10k chars
+                    break  # Stop streaming
 
             # Reset edit counter if we're in a new window
             if current_time - edit_tracker['window_start'] >= MESSAGE_EDIT_WINDOW:
@@ -304,7 +336,7 @@ class MessageProcessor:
                         logger.warning(f"Failed to edit message: {e}")
 
         response_time = time.time() - start_time
-        return response_text, response_time
+        return response_text, response_time, was_runaway
 
     @staticmethod
     async def play_tts_audio(
@@ -414,7 +446,28 @@ class MessageProcessor:
                 for chunk in chunks:
                     await message.channel.send(chunk)
             else:
-                await status_msg.edit(content=final_response)
+                # Try to edit with retry logic to ensure thinking tags are removed
+                # This is critical because rate limiting during streaming might leave tags visible
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        await status_msg.edit(content=final_response)
+                        break  # Success
+                    except discord.errors.HTTPException as e:
+                        if attempt < max_retries - 1:
+                            # Wait with exponential backoff
+                            wait_time = 2 ** attempt  # 1s, 2s, 4s
+                            logger.warning(f"Failed to edit final response (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {e}")
+                            await asyncio.sleep(wait_time)
+                        else:
+                            # Final attempt failed - log error but don't crash
+                            logger.error(f"Failed to edit final response after {max_retries} attempts: {e}")
+                            # As last resort, delete and send new message
+                            try:
+                                await status_msg.delete()
+                                await message.channel.send(final_response)
+                            except Exception as delete_error:
+                                logger.error(f"Could not recover from edit failure: {delete_error}")
 
             # TTS in voice channel if enabled
             if ENABLE_TTS and not is_dm and guild_id:

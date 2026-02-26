@@ -8,7 +8,7 @@ import json
 import logging
 from typing import AsyncGenerator, List, Dict, Optional
 
-from config.settings import LMSTUDIO_URL, MAX_HISTORY
+from config.settings import LMSTUDIO_URL, MAX_HISTORY, LMSTUDIO_TOTAL_TIMEOUT, LMSTUDIO_READ_TIMEOUT
 from utils.logging_config import guild_debug_log
 from config.constants import DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, MIN_TEMPERATURE, MAX_TEMPERATURE, HISTORY_MULTIPLIER, LMSTUDIO_INITIAL_RETRY_DELAY, LMSTUDIO_MAX_RETRY_DELAY, LMSTUDIO_RETRY_BACKOFF_MULTIPLIER, LMSTUDIO_MAX_RETRIES
 
@@ -234,7 +234,7 @@ async def stream_completion(
 
     for attempt in range(LMSTUDIO_MAX_RETRIES):
         try:
-            timeout = aiohttp.ClientTimeout(total=300, sock_read=60)  # 5 min total, 60s read timeout
+            timeout = aiohttp.ClientTimeout(total=LMSTUDIO_TOTAL_TIMEOUT, sock_read=LMSTUDIO_READ_TIMEOUT)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(LMSTUDIO_URL, json=payload) as response:
                     if response.status == 200:

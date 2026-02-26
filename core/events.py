@@ -329,13 +329,16 @@ def setup_events(bot):
             guild_debug_log(guild_id, "debug", f"Prompt tokens (accurate): {estimated_prompt_tokens}")
 
             # Stream the response
-            response_text, response_time = await MessageProcessor.stream_and_update_response(
+            response_text, response_time, was_runaway = await MessageProcessor.stream_and_update_response(
                 api_messages, model_to_use, temperature, max_tokens,
-                status_msg, edit_tracker, guild_id
+                status_msg, edit_tracker, guild_id, conversation_id
             )
 
             # Process final response
             if response_text:
+                # Add warning if runaway generation was detected
+                if was_runaway:
+                    response_text += "\n\n⚠️ **[Generation stopped: Response exceeded limits. Conversation history has been automatically cleared to prevent further issues.]**"
                 add_message_to_history(conversation_id, "assistant", response_text)
 
                 # Log bot response to conversation log

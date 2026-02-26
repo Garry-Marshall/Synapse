@@ -110,7 +110,7 @@ def check_rate_limit(user_id: int, guild_id: int) -> Tuple[bool, str]:
 
 def clean_search_query(query: str) -> str:
     """
-    Clean the search query by removing common trigger phrases.
+    Clean the search query by removing common trigger phrases that match SEARCH_TRIGGERS.
 
     Args:
         query: Original search query
@@ -120,30 +120,58 @@ def clean_search_query(query: str) -> str:
     """
     query_lower = query.lower()
 
-    # Phrases to strip from the beginning/middle of queries
+    # Phrases to strip from the beginning (aligned with SEARCH_TRIGGERS)
+    # Ordered from most specific to least specific to avoid partial matches
     strip_phrases = [
-        "search for ",
-        "search ",
-        "look up ",
-        "find information about ",
-        "find information on ",
-        "find info about ",
-        "find info on ",
-        "tell me about ",
-        "what is ",
-        "what's ",
-        "who is ",
-        "who's ",
-        "where is ",
-        "where's ",
-        "when is ",
-        "when's ",
-        "how do i ",
-        "how to ",
+        # Direct search commands
         "can you search for ",
         "can you look up ",
         "please search for ",
         "please look up ",
+        "search for ",
+        "look up ",
+        "find information about ",
+        "find information on ",
+        "find information ",
+        "find info about ",
+        "find info on ",
+        "find info ",
+
+        # Question words (common conversational prefixes)
+        "what's happening with ",
+        "what is happening with ",
+        "what's the ",
+        "what is the ",
+        "what's ",
+        "what is ",
+        "who's currently ",
+        "who is currently ",
+        "who's the current ",
+        "who is the current ",
+        "who's ",
+        "who is ",
+        "where can i find ",
+        "where is ",
+        "where to ",
+        "where's ",
+        "when will ",
+        "when does ",
+        "when is ",
+        "when's ",
+
+        # Price/cost queries
+        "how much does ",
+        "how much is ",
+        "how expensive is ",
+        "how cheap is ",
+
+        # Other common prefixes
+        "tell me about ",
+        "give me ",
+        "show me ",
+
+        # Generic search command
+        "search ",
     ]
 
     cleaned = query

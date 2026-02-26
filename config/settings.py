@@ -40,6 +40,13 @@ BOT_ADMIN_ROLE_NAME=Bot Admin
 
 # LMStudio API Configuration
 LMSTUDIO_URL=http://localhost:1234/v1/chat/completions
+# LM Studio timeouts (in seconds)
+LMSTUDIO_TOTAL_TIMEOUT=600  # Total request timeout (10 minutes)
+LMSTUDIO_READ_TIMEOUT=120   # Timeout between data chunks (2 minutes)
+# Runaway generation detection (auto-clears context if generation goes haywire)
+RUNAWAY_DETECTION_ENABLED=true
+RUNAWAY_MAX_TIME=180        # Max generation time in seconds (3 minutes)
+RUNAWAY_MAX_TOKENS=4000     # Max tokens before considering it runaway (~16k chars)
 
 # Conversation Settings
 MAX_HISTORY_MESSAGES=10
@@ -110,6 +117,15 @@ DB_FILE = os.getenv('DB_FILE', 'synapse_bot.db')
 # ============================================================================
 
 LMSTUDIO_URL = os.getenv('LMSTUDIO_URL', 'http://localhost:1234/v1/chat/completions')
+
+# LM Studio request timeouts (in seconds)
+LMSTUDIO_TOTAL_TIMEOUT = int(os.getenv('LMSTUDIO_TOTAL_TIMEOUT', '600'))  # 10 minutes total
+LMSTUDIO_READ_TIMEOUT = int(os.getenv('LMSTUDIO_READ_TIMEOUT', '120'))  # 2 minutes between data chunks
+
+# Runaway generation detection
+RUNAWAY_DETECTION_ENABLED = os.getenv('RUNAWAY_DETECTION_ENABLED', 'true').lower() == 'true'
+RUNAWAY_MAX_TIME = int(os.getenv('RUNAWAY_MAX_TIME', '180'))  # 3 minutes max generation time
+RUNAWAY_MAX_TOKENS = int(os.getenv('RUNAWAY_MAX_TOKENS', '4000'))  # 4000 tokens max (roughly 16k chars)
 
 # ============================================================================
 # CONVERSATION SETTINGS

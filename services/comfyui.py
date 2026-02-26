@@ -94,7 +94,7 @@ async def generate_and_send_image(message: discord.Message, prompt: str, guild_i
         final_message = f"{message.author.mention} asked me to imagine: \"{prompt}\""
 
         await status_msg.delete()
-        await message.channel.send(
+        sent_message = await message.channel.send(
             content=final_message,
             file=discord.File(fp=collage_path, filename='generated_image.png')
         )
@@ -103,6 +103,10 @@ async def generate_and_send_image(message: discord.Message, prompt: str, guild_i
         update_stats(conversation_id, tool_used="comfyui_generation", guild_id=guild_id)
 
         guild_debug_log(guild_id, "info", "Successfully sent generated image to channel")
+
+        # Automatically analyze the generated image
+        guild_debug_log(guild_id, "info", "Auto-analyzing generated image")
+        await analyze_generated_image(sent_message, message, guild_id)
 
     except Exception as e:
         logger.error(f"Error generating image with ComfyUI: {e}", exc_info=True)
@@ -113,6 +117,89 @@ async def generate_and_send_image(message: discord.Message, prompt: str, guild_i
             )
         except Exception as send_error:
             logger.error(f"Failed to send error message: {send_error}")
+
+
+async def analyze_generated_image(sent_message: discord.Message, original_message: discord.Message, guild_id: int = None):
+    """
+    Automatically analyze a generated image using the bot's vision capabilities.
+
+    Args:
+        sent_message: The message containing the generated image
+        original_message: The original message that triggered generation
+        guild_id: Guild ID for logging
+    """
+    from services.file_processor import process_image_attachment
+    from services.lmstudio import stream_completion, build_api_messages
+    from utils.stats_manager import add_message_to_history, get_conversation_history
+    from utils.settings_manager import get_guild_setting, get_guild_temperature, get_guild_max_tokens
+    from commands.model import get_selected_model
+    from config.constants import DEFAULT_SYSTEM_PROMPT
+    from utils.logging_config import guild_debug_log
+    from utils.text_utils import remove_thinking_tags
+
+    try:
+        # Check if the message has attachments
+        if not sent_message.attachments:
+            guild_debug_log(guild_id, "warning", "No attachments found in sent message for analysis")
+            return
+
+        # Get conversation ID
+        is_dm = isinstance(original_message.channel, discord.DMChannel)
+        conversation_id = original_message.author.id if is_dm else original_message.channel.id
+
+        # Process the image attachment
+        attachment = sent_message.attachments[0]
+        guild_debug_log(guild_id, "debug", f"Processing generated image for analysis: {attachment.filename}")
+
+        image_data = await process_image_attachment(attachment, original_message.channel, guild_id)
+        if not image_data:
+            guild_debug_log(guild_id, "warning", "Failed to process generated image for analysis")
+            return
+
+        # Send analysis status
+        analysis_msg = await original_message.channel.send("🔍 Analyzing the generated image...")
+
+        # Build the analysis prompt
+        analysis_content = [
+            {"type": "text", "text": "Describe this image I just generated. What do you see?"},
+            image_data
+        ]
+
+        # Add to conversation history
+        add_message_to_history(conversation_id, "user", analysis_content)
+
+        # Get system prompt and build API messages
+        system_prompt = get_guild_setting(guild_id, "system_prompt", DEFAULT_SYSTEM_PROMPT)
+        api_messages = build_api_messages(get_conversation_history(conversation_id), system_prompt)
+
+        # Get model settings
+        model = get_selected_model(guild_id)
+        temperature = get_guild_temperature(guild_id)
+        max_tokens = get_guild_max_tokens(guild_id)
+
+        guild_debug_log(guild_id, "info", f"Streaming image analysis with model: {model}")
+
+        # Stream the analysis
+        response_text = ""
+        async for chunk in stream_completion(api_messages, model, temperature, max_tokens, guild_id):
+            response_text += chunk
+
+        # Clean and send response
+        final_response = remove_thinking_tags(response_text)
+        if final_response.strip():
+            await analysis_msg.edit(content=final_response[:2000])  # Discord limit
+
+            # Add to conversation history
+            add_message_to_history(conversation_id, "assistant", response_text)
+
+            guild_debug_log(guild_id, "info", "Image analysis completed and sent")
+        else:
+            await analysis_msg.delete()
+            guild_debug_log(guild_id, "warning", "Analysis produced no content")
+
+    except Exception as e:
+        logger.error(f"Error analyzing generated image: {e}", exc_info=True)
+        guild_debug_log(guild_id, "error", f"Image analysis failed: {e}")
 
 
 def extract_prompt_from_message(message_content: str, trigger_word: str) -> str:
