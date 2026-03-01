@@ -339,7 +339,8 @@ def setup_events(bot):
                 # Add warning if runaway generation was detected
                 if was_runaway:
                     response_text += "\n\n⚠️ **[Generation stopped: Response exceeded limits. Conversation history has been automatically cleared to prevent further issues.]**"
-                add_message_to_history(conversation_id, "assistant", response_text)
+                else:
+                    add_message_to_history(conversation_id, "assistant", response_text)
 
                 # Log bot response to conversation log
                 log_conversation(message.author.id, guild_id, response_text, is_bot=True)
