@@ -2,10 +2,13 @@
 # Install with: pip install -r requirements.txt
 
 # Core Discord library
-discord.py>=2.6.4
+discord.py>=2.7.0
 
 # Voice Channel support (required for both regular TTS and Moshi AI)
 PyNaCl>=1.6.2
+
+# Discord DAVE E2EE protocol support (required for voice in discord.py 2.7+)
+davey>=0.1.4
 
 # Voice receiving (required for Moshi AI voice input)
 discord-ext-voice-recv>=0.3.1

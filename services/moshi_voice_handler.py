@@ -11,6 +11,10 @@ from discord.ext import voice_recv
 import io
 import time
 import threading
+try:
+    import davey as _davey
+except ImportError:
+    _davey = None  # DAVE E2EE not available
 from typing import Optional
 from services.moshi import MoshiSession, start_moshi_session, stop_moshi_session, get_moshi_session
 from utils.opus_transcoder import OpusTranscoder
@@ -85,6 +89,11 @@ class MoshiAudioSink(voice_recv.AudioSink):
         if not self._running:
             return
 
+        # Send Ogg headers immediately once handshake is done — don't wait for user
+        # audio. Without this, the silence generator never sends anything if write()
+        # hasn't been called yet (e.g. user hasn't spoken or DAVE isn't ready yet).
+        self._send_headers_if_needed()
+
         # Send silence at 20ms intervals when no real audio
         silence_interval = 0.020
         last_send_time = time.time()
@@ -118,6 +127,39 @@ class MoshiAudioSink(voice_recv.AudioSink):
         # Get Opus-encoded audio from the RTP packet
         if hasattr(data, 'opus') and data.opus:
             opus_packet = data.opus
+
+            # DAVE E2EE decryption (required since Discord enforced E2EE on March 1, 2026).
+            # discord-ext-voice-recv decrypts the outer RTP layer (xsalsa20/xchacha20)
+            # but does NOT decrypt the DAVE layer on top. Without this, opus_packet
+            # contains DAVE-encrypted bytes and the Opus decoder sees corrupt data.
+            if user is None:
+                # SSRC not yet resolved to a member — can't DAVE-decrypt without a user ID.
+                # Drop the packet; silence generator keeps Moshi fed in the meantime.
+                return
+
+            voice_client = getattr(self, '_voice_client', None)
+            if voice_client is not None:
+                connection = getattr(voice_client, '_connection', None)
+                if connection is not None:
+                    dave_protocol_version = getattr(connection, 'dave_protocol_version', 0)
+                    dave_session = getattr(connection, 'dave_session', None)
+                    dave_ready = getattr(dave_session, 'ready', False) if dave_session else False
+
+                    if dave_protocol_version > 0 and dave_session is not None and dave_ready:
+                        dave_lock = getattr(voice_client, '_dave_lock', None)
+                        try:
+                            if dave_lock:
+                                with dave_lock:
+                                    decrypted = dave_session.decrypt(user.id, _davey.MediaType.audio, opus_packet)
+                            else:
+                                decrypted = dave_session.decrypt(user.id, _davey.MediaType.audio, opus_packet)
+                            if decrypted is not None:
+                                opus_packet = decrypted
+                        except Exception as e:
+                            logger.debug(f"DAVE decrypt failed for user {user.id}: {e}")
+                            return
+                    elif dave_protocol_version > 0 and not dave_ready:
+                        return  # Session not ready yet, silence generator keeps Moshi fed
 
             if len(opus_packet) > 0:
                 # Check handshake status
@@ -326,6 +368,20 @@ class MoshiVoiceHandler:
 
             self.voice_client = voice_client
             loop = asyncio.get_event_loop()
+
+            # Install a DAVE lock to prevent concurrent access to DaveSession.
+            # discord.py's player thread calls dave_session.encrypt_opus() at 50fps,
+            # and our receive thread calls dave_session.decrypt(). The davey Rust
+            # DaveSession uses a RefCell internally — concurrent borrows cause an
+            # "Already mutably borrowed" panic that kills the player thread.
+            # We patch _get_voice_packet so both paths share the same lock.
+            dave_lock = threading.Lock()
+            voice_client._dave_lock = dave_lock
+            original_get_voice_packet = voice_client._get_voice_packet
+            def _locked_get_voice_packet(data: bytes) -> bytes:
+                with dave_lock:
+                    return original_get_voice_packet(data)
+            voice_client._get_voice_packet = _locked_get_voice_packet
 
             # Initialize Opus transcoder for sample rate conversion
             self.transcoder = OpusTranscoder()
