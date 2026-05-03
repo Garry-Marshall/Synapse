@@ -295,9 +295,11 @@ def setup_events(bot):
             )
 
             # Prepare user message content
-            current_content = combined_message
+            # Prefix with display name in guild channels so the LLM knows who is speaking
+            display_prefix = f"{message.author.display_name}: " if not is_dm else ""
+            current_content = f"{display_prefix}{combined_message}" if combined_message else combined_message
             if images and len(images) > 0:
-                current_content = [{"type": "text", "text": combined_message or "What's in this image?"}] + images
+                current_content = [{"type": "text", "text": f"{display_prefix}{combined_message}" if combined_message else "What's in this image?"}] + images
 
             # Add to conversation history
             add_message_to_history(conversation_id, "user", current_content)

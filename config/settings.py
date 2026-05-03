@@ -205,6 +205,7 @@ COMFYUI_WORKFLOW = os.getenv('COMFYUI_WORKFLOW', 'workflow_flux_api.json')
 COMFYUI_PROMPT_NODES = [str(x.strip()) for x in os.getenv('COMFYUI_PROMPT_NODES', '6').split(',') if x.strip()]
 COMFYUI_RAND_SEED_NODES = [str(x.strip()) for x in os.getenv('COMFYUI_RAND_SEED_NODES', '36').split(',') if x.strip()]
 COMFYUI_TRIGGERS = [x.strip().lower() for x in os.getenv('COMFYUI_TRIGGERS', 'imagine,generate').split(',') if x.strip()]
+COMFYUI_AUTO_ANALYZE = os.getenv('COMFYUI_AUTO_ANALYZE', 'true').lower() == 'true'
 
 # ============================================================================
 # LOGGING/DEBUG SETTINGS

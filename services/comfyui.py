@@ -10,6 +10,7 @@ from datetime import datetime
 from math import ceil, sqrt
 
 from utils.image_utils import generate_flux_image
+from config.settings import COMFYUI_AUTO_ANALYZE
 
 
 logger = logging.getLogger(__name__)
@@ -104,9 +105,9 @@ async def generate_and_send_image(message: discord.Message, prompt: str, guild_i
 
         guild_debug_log(guild_id, "info", "Successfully sent generated image to channel")
 
-        # Automatically analyze the generated image
-        guild_debug_log(guild_id, "info", "Auto-analyzing generated image")
-        await analyze_generated_image(sent_message, message, guild_id)
+        if COMFYUI_AUTO_ANALYZE:
+            guild_debug_log(guild_id, "info", "Auto-analyzing generated image")
+            await analyze_generated_image(sent_message, message, guild_id)
 
     except Exception as e:
         logger.error(f"Error generating image with ComfyUI: {e}", exc_info=True)
