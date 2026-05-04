@@ -108,6 +108,8 @@ async def generate_and_send_image(message: discord.Message, prompt: str, guild_i
         if COMFYUI_AUTO_ANALYZE:
             guild_debug_log(guild_id, "info", "Auto-analyzing generated image")
             await analyze_generated_image(sent_message, message, guild_id)
+        else:
+            await store_image_in_history(sent_message, message, guild_id)
 
     except Exception as e:
         logger.error(f"Error generating image with ComfyUI: {e}", exc_info=True)
@@ -118,6 +120,46 @@ async def generate_and_send_image(message: discord.Message, prompt: str, guild_i
             )
         except Exception as send_error:
             logger.error(f"Failed to send error message: {send_error}")
+
+
+async def store_image_in_history(sent_message: discord.Message, original_message: discord.Message, guild_id: int = None):
+    """
+    Add a generated image to conversation history without running analysis.
+    Keeps the bot aware of the image for follow-up questions.
+
+    Args:
+        sent_message: The message containing the generated image
+        original_message: The original message that triggered generation
+        guild_id: Guild ID for logging
+    """
+    from services.file_processor import process_image_attachment
+    from utils.stats_manager import add_message_to_history
+    from utils.logging_config import guild_debug_log
+
+    try:
+        if not sent_message.attachments:
+            return
+
+        is_dm = isinstance(original_message.channel, discord.DMChannel)
+        conversation_id = original_message.author.id if is_dm else original_message.channel.id
+
+        attachment = sent_message.attachments[0]
+        image_data = await process_image_attachment(attachment, original_message.channel, guild_id)
+        if not image_data:
+            guild_debug_log(guild_id, "warning", "Failed to add generated image to history")
+            return
+
+        # Store the image as a user turn so the LLM has visual context for follow-ups
+        history_content = [
+            {"type": "text", "text": "[Generated image — stored for context]"},
+            image_data
+        ]
+        add_message_to_history(conversation_id, "user", history_content)
+        guild_debug_log(guild_id, "info", "Generated image added to conversation history (analysis disabled)")
+
+    except Exception as e:
+        logger.error(f"Error storing generated image in history: {e}", exc_info=True)
+        guild_debug_log(guild_id, "error", f"Failed to store image in history: {e}")
 
 
 async def analyze_generated_image(sent_message: discord.Message, original_message: discord.Message, guild_id: int = None):
