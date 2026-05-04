@@ -31,32 +31,55 @@ logger = logging.getLogger(__name__)
 async def get_recent_context(channel, limit: int = CONTEXT_MESSAGES) -> list:
     """
     Fetch recent messages from the Discord channel to provide context.
+    The bot's own messages are returned as role 'assistant' so the LLM
+    receives a proper conversation thread instead of a flat block of user
+    messages. This prevents the LLM from mixing up user identities.
 
     Args:
         channel: Discord channel object
         limit: Number of messages to fetch
 
     Returns:
-        List of message dictionaries
+        List of message dicts with 'role' and 'content' keys
     """
     context = []
     try:
-        async for msg in channel.history(limit=limit * 3):
-            if IGNORE_BOTS and msg.author.bot:
-                continue
-            if hasattr(channel, 'guild') and channel.guild is not None:
-                if msg.author == channel.guild.me:
-                    continue
+        is_dm = isinstance(channel, discord.DMChannel)
 
-            if isinstance(channel, discord.DMChannel):
-                context.append({"role": "user", "content": msg.content})
+        # Resolve the bot's own identity without importing the bot instance
+        if is_dm:
+            bot_user = channel.me
+        elif hasattr(channel, 'guild') and channel.guild:
+            bot_user = channel.guild.me
+        else:
+            bot_user = None
+
+        async for msg in channel.history(limit=limit * 3):
+            if bot_user and msg.author == bot_user:
+                # Bot's own messages → assistant turn (skip if content is empty)
+                if msg.content.strip():
+                    context.append({"role": "assistant", "content": msg.content})
+            elif IGNORE_BOTS and msg.author.bot:
+                # Other bots → skip entirely
+                continue
             else:
-                context.append({"role": "user", "content": f"{msg.author.display_name}: {msg.content}"})
+                # Human messages → user turn with display name prefix in guilds
+                if is_dm:
+                    context.append({"role": "user", "content": msg.content})
+                else:
+                    context.append({"role": "user", "content": f"{msg.author.display_name}: {msg.content}"})
 
             if len(context) >= limit:
                 break
 
         context.reverse()
+
+        # Some LLM APIs require the first message to be a user turn.
+        # Drop any leading assistant messages that appear when the bot
+        # happened to speak last before a cold-start context load.
+        while context and context[0]["role"] == "assistant":
+            context.pop(0)
+
         return context
     except Exception as e:
         logger.error(f"Error fetching message history: {e}")
