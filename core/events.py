@@ -216,9 +216,9 @@ def setup_events(bot):
         comfyui_enabled = ENABLE_COMFYUI and (guild_id is None or is_comfyui_enabled_for_guild(guild_id))
 
         if comfyui_enabled and message.content.strip():
-            message_lower = message.content.lower()
+            message_lower = message.content.lower().lstrip()
             for trigger in COMFYUI_TRIGGERS:
-                if trigger in message_lower:
+                if message_lower.startswith(trigger):
                     from services.comfyui import generate_and_send_image, extract_prompt_from_message
                     guild_debug_log(guild_id, "info", f"ComfyUI trigger word '{trigger}' detected in message")
 
