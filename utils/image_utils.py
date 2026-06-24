@@ -212,8 +212,8 @@ def _validate_workflow_nodes(workflow: dict, prompt_nodes: list, seed_nodes: lis
         if not isinstance(node["inputs"], dict):
             raise ValueError(f"Node '{node_id}' inputs must be a dictionary")
 
-        if "text" not in node["inputs"]:
-            raise ValueError(f"Node '{node_id}' missing 'text' input field")
+        if "text" not in node["inputs"] and "value" not in node["inputs"]:
+            raise ValueError(f"Node '{node_id}' missing 'text' or 'value' input field")
 
     # Validate seed nodes
     for node_id in seed_nodes:
@@ -276,7 +276,11 @@ async def generate_flux_image(prompt: str, interaction, channel_id):
     if prompt is not None and COMFYUI_PROMPT_NODES and COMFYUI_PROMPT_NODES[0] != '':
         for node in COMFYUI_PROMPT_NODES:
             if node:  # Skip empty strings
-                workflow[node]["inputs"]["text"] = prompt
+                # Some workflows use 'text', others use 'value'
+                if "value" in workflow[node]["inputs"]:
+                    workflow[node]["inputs"]["value"] = prompt
+                else:
+                    workflow[node]["inputs"]["text"] = prompt
 
     if COMFYUI_RAND_SEED_NODES and COMFYUI_RAND_SEED_NODES[0] != '':
         for node in COMFYUI_RAND_SEED_NODES:

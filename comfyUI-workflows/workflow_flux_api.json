@@ -36,7 +36,7 @@
   },
   "12": {
     "inputs": {
-      "unet_name": "flux1-dev-fp8.safetensors",
+      "unet_name": "pixelwave_flux1Dev03.safetensors",
       "weight_dtype": "fp8_e4m3fn"
     },
     "class_type": "UNETLoader",
